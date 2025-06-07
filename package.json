@@ -1,0 +1,25 @@
+{
+  "name": "khabra-mlm-backend",
+  "version": "1.0.0",
+  "description": "Backend for Khabra MLM system",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon .backend/server.js",
+    "init-db": "node src/scripts/initDb.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.0",
+    "mongoose": "^7.0.3",
+    "morgan": "^1.10.0",
+    "nodemailer": "^7.0.3",
+    "validator": "^13.9.0"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.22"
+  }
+}
