@@ -8,7 +8,7 @@ const Order = require('../models/Order');
 // Load environment variables
 dotenv.config();
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/khabra-mlm';
+const MONGODB_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/khabra-mlm';
 
 // Sample data
 const sampleProducts = [

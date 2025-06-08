@@ -6,16 +6,10 @@ const rateLimit = require('express-rate-limit');
 const mongoSanitize = require('express-mongo-sanitize');
 const xss = require('xss-clean');
 const hpp = require('hpp');
+const dotenv = require('dotenv')
 const cookieParser = require('cookie-parser');
 const compression = require('compression');
-const { errorHandler } = require('./middleware/errorMiddleware');
-const connectDB = require('./config/db');
-
-// Load env vars
-require('dotenv').config();
-
-// Connect to database
-connectDB();
+const { errorHandler, notFound } = require('./middleware/errorMiddleware');
 
 const app = express();
 
@@ -62,26 +56,27 @@ const cartRoutes = require('./routes/cartRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const addressRoutes = require('./routes/addressRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
+const rankRoutes = require('./routes/rankRoutes');
+const earningsRoutes = require('./routes/earningsRoutes');
+const networkRoutes = require('./routes/networkRoutes');
+const authRoutes = require('./routes/auth');
 
+// API Routes
 app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/addresses', addressRoutes);
 app.use('/api/reviews', reviewRoutes);
+app.use('/api/ranks', rankRoutes);
+app.use('/api/users/earnings', earningsRoutes);
+app.use('/api/users/network', networkRoutes);
+app.use('/api/auth', authRoutes);
+
+// Handle 404 errors
+app.use(notFound);
 
 // Error handler
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 5000;
-
-const server = app.listen(PORT, () => {
-  console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
-});
-
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err, promise) => {
-  console.log(`Error: ${err.message}`);
-  // Close server & exit process
-  server.close(() => process.exit(1));
-}); 
+module.exports = app; 
