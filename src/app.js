@@ -13,6 +13,14 @@ const { errorHandler, notFound } = require('./middleware/errorMiddleware');
 
 const app = express();
 
+// Enable CORS with specific options
+app.use(cors({
+  origin: ['http://localhost:5173', 'http://localhost:5000'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 // Body parser
 app.use(express.json());
 
@@ -25,7 +33,10 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 // Set security headers
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" }
+}));
 
 // Rate limiting
 const limiter = rateLimit({
@@ -42,9 +53,6 @@ app.use(xss());
 
 // Prevent HTTP Parameter Pollution
 app.use(hpp());
-
-// Enable CORS
-app.use(cors());
 
 // Compress responses
 app.use(compression());
