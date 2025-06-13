@@ -343,4 +343,14 @@ exports.getAllReturnRequests = async (req, res) => {
   } catch (error) {
     res.status(500).json({ message: 'Error fetching return requests', error: error.message });
   }
+};
+
+// Delete all orders (Admin only)
+exports.deleteBulkOrders = async (req, res) => {
+  try {
+    await Order.deleteMany({}); // Delete all orders
+    res.json({ message: 'All orders deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ message: 'Error deleting all orders', error: error.message });
+  }
 }; 

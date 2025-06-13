@@ -1,25 +1,30 @@
 const express = require('express');
-const router = express.Router();
 const {
   getProducts,
   getProduct,
   createProduct,
   updateProduct,
-  deleteProduct,
-  addProductReview,
-} = require('../controllers/product');
+  deleteProduct
+} = require('../controllers/productController');
+
+const router = express.Router();
+
 const { protect, authorize } = require('../middleware/auth');
 
+// Apply protect middleware to all routes
+router.use(protect);
+
+// Apply admin authorization to all routes
+router.use(authorize('admin'));
+
+// Product routes
 router.route('/')
   .get(getProducts)
-  .post(protect, authorize('admin'), createProduct);
+  .post(createProduct);
 
 router.route('/:id')
   .get(getProduct)
-  .put(protect, authorize('admin'), updateProduct)
-  .delete(protect, authorize('admin'), deleteProduct);
-
-router.route('/:id/reviews')
-  .post(protect, addProductReview);
+  .put(updateProduct)
+  .delete(deleteProduct);
 
 module.exports = router; 
