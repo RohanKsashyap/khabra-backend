@@ -44,7 +44,7 @@ exports.addAddress = async (req, res) => {
 // @access  Private
 exports.getDefaultAddress = asyncHandler(async (req, res, next) => {
   const address = await Address.findOne({ 
-    user: req.user.id,
+    user: req.user._id,
     isDefault: true 
   });
 

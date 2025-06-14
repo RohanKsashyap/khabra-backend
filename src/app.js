@@ -68,6 +68,7 @@ const rankRoutes = require('./routes/rankRoutes');
 const earningsRoutes = require('./routes/earningsRoutes');
 const networkRoutes = require('./routes/networkRoutes');
 const authRoutes = require('./routes/auth');
+const contactRoutes = require('./routes/contactRoutes');
 
 // API Routes
 app.use('/api/users', userRoutes);
@@ -80,6 +81,7 @@ app.use('/api/ranks', rankRoutes);
 app.use('/api/users/earnings', earningsRoutes);
 app.use('/api/users/network', networkRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/contacts', contactRoutes);
 
 // Handle 404 errors
 app.use(notFound);

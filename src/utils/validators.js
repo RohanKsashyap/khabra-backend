@@ -27,4 +27,17 @@ exports.validateReview = (data) => {
   });
 
   return schema.validate(data);
+};
+
+// Email validation regex pattern
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Validates an email address format
+ * @param {string} email - The email address to validate
+ * @returns {boolean} - True if email is valid, false otherwise
+ */
+exports.validateEmail = (email) => {
+  if (!email) return false;
+  return emailRegex.test(email);
 }; 

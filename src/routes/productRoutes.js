@@ -14,17 +14,14 @@ const { protect, authorize } = require('../middleware/auth');
 // Apply protect middleware to all routes
 router.use(protect);
 
-// Apply admin authorization to all routes
-router.use(authorize('admin'));
-
 // Product routes
 router.route('/')
   .get(getProducts)
-  .post(createProduct);
+  .post(authorize('admin'), createProduct);
 
 router.route('/:id')
   .get(getProduct)
-  .put(updateProduct)
-  .delete(deleteProduct);
+  .put(authorize('admin'), updateProduct)
+  .delete(authorize('admin'), deleteProduct);
 
 module.exports = router; 

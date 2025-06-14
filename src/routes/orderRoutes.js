@@ -15,9 +15,8 @@ const {
 const { protect, admin } = require('../middleware/authMiddleware');
 
 // Admin routes (must come before parameterized routes)
-router.use(protect, admin);
-router.delete('/bulk', deleteBulkOrders);
-router.get('/admin/returns', getAllReturnRequests);
+router.delete('/bulk', protect, admin, deleteBulkOrders);
+router.get('/admin/returns', protect, admin, getAllReturnRequests);
 
 // Protected routes
 router.get('/', protect, getUserOrders);
