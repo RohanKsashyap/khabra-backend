@@ -2,6 +2,11 @@ const Order = require('../models/Order');
 const Cart = require('../models/Cart');
 const Product = require('../models/Product');
 const { sendOrderStatusEmail } = require('../utils/emailService');
+const ErrorResponse = require('../utils/errorResponse');
+const asyncHandler = require('../middleware/asyncHandler');
+const Address = require('../models/Address');
+const User = require('../models/User');
+const mongoose = require('mongoose');
 
 // Create new order
 exports.createOrder = async (req, res) => {
@@ -43,26 +48,58 @@ exports.createOrder = async (req, res) => {
   }
 };
 
-// Get user's orders
-exports.getUserOrders = async (req, res) => {
+// Get user's orders (or all orders for admin with filters)
+exports.getUserOrders = asyncHandler(async (req, res) => {
+  const { status, userId } = req.query;
+  let query = {};
+
+  if (req.user.role === 'admin') {
+    // Admin can filter by userId and status
+    if (userId) {
+      query.user = userId;
+    }
+    if (status) {
+      query.status = status;
+    }
+  } else {
+    // Regular user can only see their own orders
+    query.user = req.user._id;
+    // If a regular user requests a specific status, apply it to their orders
+    if (status) {
+      query.status = status;
+    }
+  }
+
+  console.log('getUserOrders query:', query); // Log the query
+
   try {
-    const orders = await Order.find({ user: req.user._id })
+    const orders = await Order.find(query)
       .populate('items.product')
+      .populate('items.returnRequest')
       .sort({ createdAt: -1 });
 
-    res.json(orders);
+    console.log('Fetched orders:', orders); // Log the fetched orders
+
+    res.json({ success: true, data: orders });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
-};
+});
 
 // Get single order
 exports.getOrder = async (req, res) => {
   try {
-    const order = await Order.findOne({
-      _id: req.params.id,
-      user: req.user._id
-    }).populate('items.product');
+    let query = { _id: req.params.id };
+    
+    // If not admin, only allow fetching own orders
+    if (req.user.role !== 'admin') {
+      query.user = req.user._id;
+    }
+
+    const order = await Order.findOne(query)
+      .populate('user', 'name email')
+      .populate('items.product')
+      .populate('items.returnRequest');
 
     if (!order) {
       return res.status(404).json({ message: 'Order not found' });
@@ -353,4 +390,39 @@ exports.deleteBulkOrders = async (req, res) => {
   } catch (error) {
     res.status(500).json({ message: 'Error deleting all orders', error: error.message });
   }
-}; 
+};
+
+// @desc    Get all orders (Admin only)
+// @route   GET /api/orders/admin/all
+// @access  Private/Admin
+exports.getAllOrders = asyncHandler(async (req, res, next) => {
+  const { userFilter } = req.query;
+
+  let userQuery = {};
+  if (userFilter) {
+    // Find users matching the filter by name or email
+    const users = await User.find({
+      $or: [
+        { name: { $regex: userFilter, $options: 'i' } },
+        { email: { $regex: userFilter, $options: 'i' } }
+      ]
+    }).select('_id');
+
+    const userIds = users.map(user => user._id);
+    userQuery = { user: { $in: userIds } };
+  }
+
+  const orders = await Order.find(userQuery).populate({
+    path: 'user',
+    select: 'name email'
+  }).populate({
+    path: 'items.product',
+    select: 'name price image'
+  }).sort({ createdAt: -1 });
+
+  res.status(200).json({
+    success: true,
+    count: orders.length,
+    data: orders
+  });
+}); 

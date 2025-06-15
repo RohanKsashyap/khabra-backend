@@ -17,6 +17,7 @@ exports.protect = async (req, res, next) => {
       // Verify token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       req.user = await User.findById(decoded.id).select('-password');
+      console.log('Auth middleware: req.user after finding user:', req.user);
       next();
     } catch (error) {
       return res.status(401).json({ message: 'Not authorized to access this route' });
@@ -32,4 +33,13 @@ exports.admin = (req, res, next) => {
   } else {
     res.status(403).json({ message: 'Not authorized as admin' });
   }
+};
+
+exports.authorize = (...roles) => {
+  return (req, res, next) => {
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({ message: `User role ${req.user.role} is not authorized to access this route` });
+    }
+    next();
+  };
 }; 

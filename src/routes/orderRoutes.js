@@ -10,13 +10,15 @@ const {
   requestReturn,
   updateReturnStatus,
   getAllReturnRequests,
-  deleteBulkOrders
+  deleteBulkOrders,
+  getAllOrders
 } = require('../controllers/orderController');
 const { protect, admin } = require('../middleware/authMiddleware');
 
 // Admin routes (must come before parameterized routes)
 router.delete('/bulk', protect, admin, deleteBulkOrders);
 router.get('/admin/returns', protect, admin, getAllReturnRequests);
+router.get('/admin/all', protect, admin, getAllOrders);
 
 // Protected routes
 router.get('/', protect, getUserOrders);

@@ -19,11 +19,12 @@ exports.validateAddress = (data) => {
 
 exports.validateReview = (data) => {
   const schema = Joi.object({
-    productId: Joi.string().required(),
-    orderId: Joi.string().required(),
+    productId: Joi.string(),
+    orderId: Joi.string(),
     rating: Joi.number().min(1).max(5).required(),
     review: Joi.string().required().min(10).max(1000),
-    images: Joi.array().items(Joi.string().uri()).max(5)
+    images: Joi.array().items(Joi.string().uri()).max(5),
+    status: Joi.string().valid('pending', 'approved', 'rejected')
   });
 
   return schema.validate(data);

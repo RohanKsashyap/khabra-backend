@@ -36,6 +36,15 @@ const orderSchema = new mongoose.Schema({
     bv: {
       type: Number,
       default: 0
+    },
+    returnStatus: {
+      type: String,
+      enum: ['none', 'pending', 'approved', 'rejected', 'completed'],
+      default: 'none',
+    },
+    returnRequest: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'ReturnRequest',
     }
   }],
   totalAmount: {
@@ -155,17 +164,6 @@ const orderSchema = new mongoose.Schema({
     }]
   },
   deliveryNotes: String,
-  returnRequest: {
-    reason: String,
-    status: {
-      type: String,
-      enum: ['pending', 'approved', 'rejected', 'completed'],
-      default: 'pending'
-    },
-    requestedAt: Date,
-    processedAt: Date,
-    notes: String
-  }
 }, {
   timestamps: true
 });

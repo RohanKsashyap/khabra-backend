@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto'); // Import crypto for token generation
 const { validateRegister, validateLogin } = require('../utils/validators');
 const { sendEmailNotification } = require('../utils/emailService'); // Import the new email function
-const asyncHandler = require('../middleware/async');
+const asyncHandler = require('../middleware/asyncHandler');
 const ErrorResponse = require('../utils/errorResponse');
 
 // @desc    Register new user

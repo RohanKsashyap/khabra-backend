@@ -1,6 +1,6 @@
 const Address = require('../models/Address');
 const { validateAddress } = require('../utils/validators');
-const asyncHandler = require('../middleware/async');
+const asyncHandler = require('../middleware/asyncHandler');
 const ErrorResponse = require('../utils/errorResponse');
 
 // Get all addresses for a user

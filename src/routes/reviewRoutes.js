@@ -14,16 +14,15 @@ const {
 // Public routes
 router.get('/product/:productId', getProductReviews);
 
-// Protected routes
+// Protected routes (both users and admins)
 router.use(protect);
 router.post('/', addReview);
 router.put('/:id', updateReview);
 router.delete('/:id', deleteReview);
 router.post('/:id/like', toggleLike);
 
-// Admin routes
-router.use(admin);
-router.get('/admin', getAllReviews);
-router.put('/admin/:id/status', updateReviewStatus);
+// Admin-only routes
+router.get('/admin', admin, getAllReviews);
+router.put('/admin/:id/status', admin, updateReviewStatus);
 
 module.exports = router; 

@@ -10,7 +10,6 @@ exports.getProductReviews = async (req, res) => {
 
     const reviews = await Review.find({ 
       product: productId,
-      status: 'approved'
     })
     .populate('user', 'name')
     .sort(sort)
@@ -19,7 +18,6 @@ exports.getProductReviews = async (req, res) => {
 
     const count = await Review.countDocuments({ 
       product: productId,
-      status: 'approved'
     });
 
     res.json({
@@ -42,7 +40,24 @@ exports.addReview = async (req, res) => {
 
     const { productId, orderId, rating, review, images } = req.body;
 
-    // Check if user has purchased the product
+    // For admins, skip purchase verification
+    if (req.user.role === 'admin') {
+      const newReview = new Review({
+        user: req.user._id,
+        product: productId,
+        order: orderId,
+        rating,
+        review,
+        images,
+        isVerifiedPurchase: false,
+        status: 'approved' // Auto-approve admin reviews
+      });
+
+      await newReview.save();
+      return res.status(201).json(newReview);
+    }
+
+    // For regular users, verify purchase
     const order = await Order.findOne({
       _id: orderId,
       user: req.user._id,
@@ -76,7 +91,8 @@ exports.addReview = async (req, res) => {
       rating,
       review,
       images,
-      isVerifiedPurchase: true
+      isVerifiedPurchase: true,
+      status: 'pending' // Regular user reviews need approval
     });
 
     await newReview.save();
@@ -94,22 +110,42 @@ exports.updateReview = async (req, res) => {
       return res.status(400).json({ message: error.details[0].message });
     }
 
-    const review = await Review.findOneAndUpdate(
-      { _id: req.params.id, user: req.user._id },
-      { 
-        rating: req.body.rating,
-        review: req.body.review,
-        images: req.body.images,
-        status: 'pending' // Reset status for admin approval
-      },
-      { new: true }
-    );
+    const { rating, review, images, status } = req.body; // Added status for admin update
 
-    if (!review) {
-      return res.status(404).json({ message: 'Review not found' });
+    let reviewDoc;
+
+    // Admins can update any review, regular users can only update their own
+    if (req.user.role === 'admin') {
+      reviewDoc = await Review.findById(req.params.id);
+      if (!reviewDoc) {
+        return res.status(404).json({ message: 'Review not found' });
+      }
+
+      // Update fields if provided
+      if (rating !== undefined) reviewDoc.rating = rating;
+      if (review !== undefined) reviewDoc.review = review;
+      if (images !== undefined) reviewDoc.images = images;
+      if (status !== undefined) reviewDoc.status = status; // Admin can update status
+
+      await reviewDoc.save();
+    } else {
+      reviewDoc = await Review.findOneAndUpdate(
+        { _id: req.params.id, user: req.user._id },
+        { 
+          rating,
+          review,
+          images,
+          status: 'pending' // Regular user reviews always go to pending after edit
+        },
+        { new: true }
+      );
     }
 
-    res.json(review);
+    if (!reviewDoc) {
+      return res.status(404).json({ message: 'Review not found or unauthorized' });
+    }
+
+    res.json(reviewDoc);
   } catch (error) {
     res.status(500).json({ message: 'Error updating review', error: error.message });
   }
@@ -118,13 +154,20 @@ exports.updateReview = async (req, res) => {
 // Delete a review
 exports.deleteReview = async (req, res) => {
   try {
-    const review = await Review.findOneAndDelete({
-      _id: req.params.id,
-      user: req.user._id
-    });
+    let reviewDoc;
 
-    if (!review) {
-      return res.status(404).json({ message: 'Review not found' });
+    // Admins can delete any review, regular users can only delete their own
+    if (req.user.role === 'admin') {
+      reviewDoc = await Review.findByIdAndDelete(req.params.id);
+    } else {
+      reviewDoc = await Review.findOneAndDelete({
+        _id: req.params.id,
+        user: req.user._id
+      });
+    }
+
+    if (!reviewDoc) {
+      return res.status(404).json({ message: 'Review not found or unauthorized' });
     }
 
     res.json({ message: 'Review deleted successfully' });
