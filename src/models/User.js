@@ -35,7 +35,9 @@ const userSchema = new mongoose.Schema({
     unique: true,
   },
   referredBy: {
-    type: String,
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
   },
   wallet: {
     balance: {

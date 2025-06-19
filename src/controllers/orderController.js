@@ -11,6 +11,13 @@ const mongoose = require('mongoose');
 // Create new order
 exports.createOrder = async (req, res) => {
   try {
+    console.log('Creating order for user:', {
+      id: req.user._id,
+      name: req.user.name,
+      email: req.user.email,
+      role: req.user.role
+    });
+
     const {
       items,
       shippingAddress,
@@ -32,7 +39,9 @@ exports.createOrder = async (req, res) => {
       paymentStatus: paymentMethod === 'cod' ? 'pending' : 'paid'
     });
 
+    console.log('Order created with user ID:', order.user);
     await order.save();
+    console.log('Order saved successfully:', order._id);
 
     // Send order confirmation email
     await sendOrderStatusEmail(req.user.email, {
@@ -44,6 +53,7 @@ exports.createOrder = async (req, res) => {
 
     res.status(201).json(order);
   } catch (error) {
+    console.error('Error creating order:', error);
     res.status(500).json({ message: 'Error creating order', error: error.message });
   }
 };
@@ -53,35 +63,55 @@ exports.getUserOrders = asyncHandler(async (req, res) => {
   const { status, userId } = req.query;
   let query = {};
 
-  if (req.user.role === 'admin') {
-    // Admin can filter by userId and status
+  console.log('Getting orders for user:', {
+    requestingUserId: req.user._id,
+    requestingUserRole: req.user.role,
+    filterUserId: userId,
+    filterStatus: status
+  });
+
+  // Regular users can ONLY see their own orders
+  if (req.user.role !== 'admin') {
+    query.user = req.user._id;
+  } else {
+    // Admin can filter by userId if provided
     if (userId) {
       query.user = userId;
     }
-    if (status) {
-      query.status = status;
-    }
-  } else {
-    // Regular user can only see their own orders
-    query.user = req.user._id;
-    // If a regular user requests a specific status, apply it to their orders
-    if (status) {
-      query.status = status;
-    }
   }
 
-  console.log('getUserOrders query:', query); // Log the query
+  // Both admin and regular users can filter by status
+  if (status) {
+    query.status = status;
+  }
+
+  console.log('Final query:', query);
 
   try {
-    const orders = await Order.find(query)
+    let orders = await Order.find(query)
+      .populate({
+        path: 'user',
+        select: 'name email phone'
+      })
       .populate('items.product')
       .populate('items.returnRequest')
       .sort({ createdAt: -1 });
 
-    console.log('Fetched orders:', orders); // Log the fetched orders
+    console.log('Found orders:', orders.map(order => ({
+      orderId: order._id,
+      userId: order.user._id,
+      userName: order.user.name,
+      userEmail: order.user.email
+    })));
+
+    // Double-check security: Ensure regular users only get their orders
+    if (req.user.role !== 'admin') {
+      orders = orders.filter(order => order.user._id.toString() === req.user._id.toString());
+    }
 
     res.json({ success: true, data: orders });
   } catch (error) {
+    console.error('Error fetching orders:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -89,6 +119,12 @@ exports.getUserOrders = asyncHandler(async (req, res) => {
 // Get single order
 exports.getOrder = async (req, res) => {
   try {
+    console.log('Getting single order:', {
+      orderId: req.params.id,
+      requestingUserId: req.user._id,
+      requestingUserRole: req.user.role
+    });
+
     let query = { _id: req.params.id };
     
     // If not admin, only allow fetching own orders
@@ -96,8 +132,13 @@ exports.getOrder = async (req, res) => {
       query.user = req.user._id;
     }
 
+    console.log('Final query:', query);
+
     const order = await Order.findOne(query)
-      .populate('user', 'name email')
+      .populate({
+        path: 'user',
+        select: 'name email phone'
+      })
       .populate('items.product')
       .populate('items.returnRequest');
 
@@ -105,8 +146,21 @@ exports.getOrder = async (req, res) => {
       return res.status(404).json({ message: 'Order not found' });
     }
 
+    // Double-check security: Ensure regular users can only see their own orders
+    if (req.user.role !== 'admin' && order.user._id.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Not authorized to view this order' });
+    }
+
+    console.log('Found order:', {
+      orderId: order._id,
+      userId: order.user._id,
+      userName: order.user.name,
+      userEmail: order.user.email
+    });
+
     res.json(order);
   } catch (error) {
+    console.error('Error fetching order:', error);
     res.status(500).json({ message: 'Error fetching order', error: error.message });
   }
 };

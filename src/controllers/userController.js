@@ -238,4 +238,37 @@ exports.updateUserProfile = asyncHandler(async (req, res) => {
   }
 
   res.json(user);
+});
+
+// @desc    Get all users (admin only)
+// @route   GET /api/users
+// @access  Private/Admin
+exports.getAllUsers = asyncHandler(async (req, res) => {
+  // Only allow admin
+  if (!req.user || req.user.role !== 'admin') {
+    throw new ErrorResponse('Not authorized as admin', 403);
+  }
+  const users = await User.find({}, '-password')
+    .populate('referredBy', 'name email referralCode')
+    .select('-resetPasswordToken -resetPasswordExpire');
+  res.json(users);
+});
+
+// @desc    Update any user (admin only)
+// @route   PUT /api/users/:id
+// @access  Private/Admin
+exports.updateUserById = asyncHandler(async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') {
+    throw new ErrorResponse('Not authorized as admin', 403);
+  }
+  const { name, phone, role } = req.body;
+  const user = await User.findById(req.params.id);
+  if (!user) {
+    throw new ErrorResponse('User not found', 404);
+  }
+  if (name) user.name = name;
+  if (phone) user.phone = phone;
+  if (role) user.role = role;
+  await user.save();
+  res.json({ success: true, user });
 }); 

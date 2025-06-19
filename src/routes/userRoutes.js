@@ -6,7 +6,9 @@ const {
   getMe,
   requestPasswordReset,
   resetPassword,
-  updateUserProfile
+  updateUserProfile,
+  getAllUsers,
+  updateUserById
 } = require('../controllers/userController');
 const { getEarnings } = require('../controllers/earningsController');
 const { protect } = require('../middleware/authMiddleware');
@@ -21,5 +23,11 @@ router.put('/reset-password/:token', resetPassword);
 router.get('/me', protect, getMe);
 router.put('/me', protect, updateUserProfile);
 router.get('/earnings', protect, getEarnings);
+
+// Admin route to get all users
+router.get('/', protect, getAllUsers);
+
+// Admin route to update any user
+router.put('/:id', protect, updateUserById);
 
 module.exports = router; 

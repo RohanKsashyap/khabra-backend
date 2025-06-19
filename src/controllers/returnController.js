@@ -59,6 +59,7 @@ exports.createReturnRequest = asyncHandler(async (req, res) => {
   if (itemToUpdate) {
     itemToUpdate.returnStatus = 'pending';
     itemToUpdate.returnRequest = returnRequest._id;
+    order.markModified('items'); // Mark items array as modified
     await order.save(); // Save the updated order
   }
 
@@ -94,5 +95,16 @@ exports.updateReturnRequestStatus = asyncHandler(async (req, res) => {
 
   const updatedReturnRequest = await returnRequest.save();
 
+  // Update the corresponding order item's returnStatus
+  const order = await Order.findById(returnRequest.order);
+  if (order) {
+    const itemToUpdate = order.items.find(item => item.product.toString() === returnRequest.product.toString());
+    if (itemToUpdate) {
+      itemToUpdate.returnStatus = returnRequest.status;
+      order.markModified('items');
+      await order.save();
+    }
+  }
+
   res.json({ message: 'Return request updated', updatedReturnRequest });
-}); 
+});  
