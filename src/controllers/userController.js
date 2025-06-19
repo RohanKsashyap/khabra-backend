@@ -248,10 +248,27 @@ exports.getAllUsers = asyncHandler(async (req, res) => {
   if (!req.user || req.user.role !== 'admin') {
     throw new ErrorResponse('Not authorized as admin', 403);
   }
-  const users = await User.find({}, '-password')
-    .populate('referredBy', 'name email referralCode')
-    .select('-resetPasswordToken -resetPasswordExpire');
-  res.json(users);
+
+  // Get all users
+  const users = await User.find({}, '-password -resetPasswordToken -resetPasswordExpire');
+
+  // For each user, find their referrer by referral code
+  const populatedUsers = await Promise.all(users.map(async (user) => {
+    if (user.referredBy) {
+      const referrer = await User.findOne({ referralCode: user.referredBy }, 'name email referralCode');
+      if (referrer) {
+        user = user.toObject();
+        user.referredBy = {
+          name: referrer.name,
+          email: referrer.email,
+          referralCode: referrer.referralCode
+        };
+      }
+    }
+    return user;
+  }));
+
+  res.json(populatedUsers);
 });
 
 // @desc    Update any user (admin only)
