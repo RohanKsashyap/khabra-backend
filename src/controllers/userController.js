@@ -6,126 +6,59 @@ const { validateRegister, validateLogin } = require('../utils/validators');
 const { sendEmailNotification } = require('../utils/emailService'); // Import the new email function
 const asyncHandler = require('../middleware/asyncHandler');
 const ErrorResponse = require('../utils/errorResponse');
+const { sendTokenResponse } = require('../middleware/auth');
 
 // @desc    Register new user
-// @route   POST /api/users
+// @route   POST /api/users/register
 // @access  Public
-exports.registerUser = asyncHandler(async (req, res) => {
-  const { error } = validateRegister(req.body);
-  if (error) {
-    throw new ErrorResponse(error.details[0].message, 400);
-  }
+exports.register = asyncHandler(async (req, res, next) => {
+  const { name, email, password, phone, referredBy } = req.body;
 
-  const { name, email, phone, password, referralCode } = req.body;
-
-  // Check if user already exists
-  let user = await User.findOne({ email });
-
-  if (user) {
-    throw new ErrorResponse('User already exists', 400);
-  }
-
-  // Hash password
-  const salt = await bcrypt.genSalt(10);
-  const hashedPassword = await bcrypt.hash(password, salt);
-
-  // Handle referral
-  let referredBy = null;
-  if (referralCode) {
-    const referrer = await User.findOne({ referralCode });
-    if (referrer) {
-      referredBy = referrer._id;
-      // TODO: Implement referral bonus/logic here
-    } else {
-      // Optionally send a warning/error that referral code is invalid
-      console.warn(`Invalid referral code used: ${referralCode}`);
-    }
-  }
-
-  // Create user
-  user = new User({
+  const user = await User.create({
     name,
     email,
+    password,
     phone,
-    password: hashedPassword,
-    referredBy
+    referredBy,
   });
 
-  await user.save();
-
-  // Generate JWT
-  const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRE
-  });
-
-  // Send welcome email
-  await sendEmailNotification(user.email, 'welcome', {
-    userName: user.name,
-    userEmail: user.email,
-    loginUrl: `${process.env.FRONTEND_URL}/login` // Assuming frontend login page route
-  });
-
-  res.status(201).json({
-    _id: user._id,
-    name: user.name,
-    email: user.email,
-    phone: user.phone,
-    role: user.role,
-    token,
-  });
+  sendTokenResponse(user, 201, res);
 });
 
-// @desc    Authenticate user & get token
+// @desc    Login user
 // @route   POST /api/users/login
 // @access  Public
-exports.loginUser = asyncHandler(async (req, res) => {
-  const { error } = validateLogin(req.body);
-  if (error) {
-    throw new ErrorResponse(error.details[0].message, 400);
-  }
-
+exports.login = asyncHandler(async (req, res, next) => {
   const { email, password } = req.body;
 
-  // Check for user
-  const user = await User.findOne({ email });
-
-  if (!user) {
-    throw new ErrorResponse('Invalid credentials', 400);
+  if (!email || !password) {
+    return next(new ErrorResponse('Please provide an email and password', 400));
   }
 
-  // Check password
-  const isMatch = await bcrypt.compare(password, user.password);
+  const user = await User.findOne({ email }).select('+password');
+
+  if (!user) {
+    return next(new ErrorResponse('Invalid credentials', 401));
+  }
+
+  const isMatch = await user.matchPassword(password);
 
   if (!isMatch) {
-    throw new ErrorResponse('Invalid credentials', 400);
+    return next(new ErrorResponse('Invalid credentials', 401));
   }
 
-  // Generate JWT
-  const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRE
-  });
-
-  res.json({
-    _id: user._id,
-    name: user.name,
-    email: user.email,
-    phone: user.phone,
-    role: user.role,
-    token,
-  });
+  sendTokenResponse(user, 200, res);
 });
 
-// @desc    Get current user
+// @desc    Get current logged in user
 // @route   GET /api/users/me
 // @access  Private
-exports.getMe = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.user._id).select('-password');
-
-  if (!user) {
-    throw new ErrorResponse('User not found', 404);
-  }
-
-  res.json(user);
+exports.getMe = asyncHandler(async (req, res, next) => {
+  const user = await User.findById(req.user.id);
+  res.status(200).json({
+    success: true,
+    data: user,
+  });
 });
 
 // @desc    Request Password Reset
@@ -271,6 +204,24 @@ exports.getAllUsers = asyncHandler(async (req, res) => {
   res.json(populatedUsers);
 });
 
+// @desc    Get user by ID (admin only)
+// @route   GET /api/users/:id
+// @access  Private/Admin
+exports.getUserById = asyncHandler(async (req, res) => {
+  // Only allow admin
+  if (!req.user || req.user.role !== 'admin') {
+    throw new ErrorResponse('Not authorized as admin', 403);
+  }
+
+  const user = await User.findById(req.params.id);
+
+  if (!user) {
+    throw new ErrorResponse('User not found', 404);
+  }
+
+  res.json(user);
+});
+
 // @desc    Update any user (admin only)
 // @route   PUT /api/users/:id
 // @access  Private/Admin
@@ -288,4 +239,167 @@ exports.updateUserById = asyncHandler(async (req, res) => {
   if (role) user.role = role;
   await user.save();
   res.json({ success: true, user });
+});
+
+exports.getUsers = async (req, res) => {
+  const { email } = req.query;
+  try {
+    const query = email ? { email: { $regex: email, $options: 'i' } } : {};
+    const users = await User.find(query);
+    res.json(users);
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to get users' });
+  }
+};
+
+exports.updateUser = async (req, res) => {
+  try {
+    const user = await User.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true
+    });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ message: 'Error updating user', error: error.message });
+  }
+};
+
+exports.updateProfile = async (req, res, next) => {
+  const { name, email, phone } = req.body;
+  try {
+    const user = await User.findById(req.user.id);
+
+    if (!user) {
+      return next(new ErrorResponse('User not found', 404));
+    }
+
+    user.name = name || user.name;
+    user.email = email || user.email;
+    user.phone = phone || user.phone;
+
+    await user.save();
+
+    res.json({
+      success: true,
+      data: user,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.forgotPassword = async (req, res, next) => {
+  const { email } = req.body;
+
+  try {
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return next(new ErrorResponse('There is no user with that email', 404));
+    }
+
+    // Get reset token
+    const resetToken = user.getResetPasswordToken();
+
+    await user.save({ validateBeforeSave: false });
+
+    // Create reset URL
+    const resetUrl = `${req.protocol}://${req.get(
+      'host'
+    )}/api/auth/resetpassword/${resetToken}`;
+
+    const message = `You are receiving this email because you (or someone else) has requested the reset of a password. Please make a PUT request to: \n\n ${resetUrl}`;
+
+    try {
+      // await sendEmail({
+      //   email: user.email,
+      //   subject: 'Password reset token',
+      //   message,
+      // });
+
+      res.status(200).json({ success: true, data: 'Email sent' });
+    } catch (err) {
+      console.log(err);
+      user.resetPasswordToken = undefined;
+      user.resetPasswordExpire = undefined;
+
+      await user.save({ validateBeforeSave: false });
+
+      return next(new ErrorResponse('Email could not be sent', 500));
+    }
+  } catch (err) {
+    next(err);
+  }
+};
+
+// @desc      Reset password
+// @route     PUT /api/auth/resetpassword/:resettoken
+// @access    Public
+exports.resetPassword = async (req, res, next) => {
+  // Get hashed token
+  const resetPasswordToken = crypto
+    .createHash('sha256')
+    .update(req.params.resettoken)
+    .digest('hex');
+
+  try {
+    const user = await User.findOne({
+      resetPasswordToken,
+      resetPasswordExpire: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return next(new ErrorResponse('Invalid token', 400));
+    }
+
+    // Set new password
+    user.password = req.body.password;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpire = undefined;
+    await user.save();
+
+    sendTokenResponse(user, 200, res);
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.deleteUser = async (req, res) => {
+  try {
+    const user = await User.findByIdAndDelete(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.json({ message: 'User removed' });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to delete user', error: error.message });
+  }
+};
+
+// @desc    Bulk delete users (admin only)
+// @route   DELETE /api/users
+// @access  Private/Admin
+exports.bulkDeleteUsers = asyncHandler(async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') {
+    throw new ErrorResponse('Not authorized as admin', 403);
+  }
+
+  const { userIds } = req.body;
+
+  if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+    throw new ErrorResponse('User IDs are required', 400);
+  }
+
+  const result = await User.deleteMany({ _id: { $in: userIds } });
+
+  if (result.deletedCount === 0) {
+    throw new ErrorResponse('No users found for deletion', 404);
+  }
+
+  res.json({ message: `${result.deletedCount} users deleted successfully.` });
 }); 

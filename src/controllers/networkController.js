@@ -187,4 +187,58 @@ exports.updateNetworkPerformance = async (req, res) => {
   } catch (error) {
     res.status(500).json({ message: 'Error updating network performance', error: error.message });
   }
+};
+
+// Get user's downline tree up to 5 levels
+exports.getNetworkTree = async (req, res) => {
+  try {
+    let rootUser;
+    if (req.params.userId) {
+      // Only admin can view any user's tree
+      if (!req.user || req.user.role !== 'admin') {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+      rootUser = await User.findById(req.params.userId);
+    } else {
+      rootUser = await User.findById(req.user._id);
+    }
+
+    if (!rootUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    let upline = null;
+    if (rootUser.referredBy) {
+      upline = await User.findOne({ referralCode: rootUser.referredBy }).select('name email referralCode role');
+    }
+
+    async function buildLevelTree(referralCode, level, maxLevel) {
+      if (level > maxLevel) return [];
+      const referrals = await User.find({ referredBy: referralCode });
+      if (referrals.length === 0) return [];
+      
+      const tree = [];
+      for (const ref of referrals) {
+        const downline = await buildLevelTree(ref.referralCode, level + 1, maxLevel);
+        tree.push({
+          ...ref.toObject(),
+          downline,
+        });
+      }
+      return tree;
+    }
+
+    const tree = await buildLevelTree(rootUser.referralCode, 1, 5); // 5 levels
+    const stats = countLevels(tree);
+
+    res.json({
+      root: rootUser.toObject(),
+      tree,
+      stats,
+      upline,
+    });
+  } catch (error) {
+    console.error('Error fetching network tree:', error);
+    res.status(500).json({ message: 'Error fetching network tree', error: error.message });
+  }
 }; 

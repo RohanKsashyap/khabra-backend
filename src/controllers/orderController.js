@@ -7,6 +7,7 @@ const asyncHandler = require('../middleware/asyncHandler');
 const Address = require('../models/Address');
 const User = require('../models/User');
 const mongoose = require('mongoose');
+const { distributeMLMCommission } = require('../utils/mlmCommission');
 
 // Create new order
 exports.createOrder = async (req, res) => {
@@ -42,6 +43,9 @@ exports.createOrder = async (req, res) => {
     console.log('Order created with user ID:', order.user);
     await order.save();
     console.log('Order saved successfully:', order._id);
+
+    // Distribute MLM commissions for this order
+    await distributeMLMCommission(order);
 
     // Send order confirmation email
     await sendOrderStatusEmail(req.user.email, {

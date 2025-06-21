@@ -70,6 +70,8 @@ const networkRoutes = require('./routes/networkRoutes');
 const authRoutes = require('./routes/auth');
 const contactRoutes = require('./routes/contactRoutes');
 const returnRoutes = require('./routes/returnRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
+const withdrawalRoutes = require('./routes/withdrawalRoutes');
 
 // API Routes
 app.use('/api/users', userRoutes);
@@ -84,6 +86,8 @@ app.use('/api/users/network', networkRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/contacts', contactRoutes);
 app.use('/api/returns', returnRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/withdrawals', withdrawalRoutes);
 
 // Handle 404 errors
 app.use(notFound);

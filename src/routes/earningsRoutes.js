@@ -49,4 +49,32 @@ router.get('/', protect, async (req, res) => {
   }
 });
 
+// @route   GET /api/earnings/all
+// @desc    Get all users' earnings (admin only)
+// @access  Private/Admin
+router.get('/all', protect, async (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ message: 'Access denied' });
+  }
+  try {
+    const { user, status, type, startDate, endDate } = req.query;
+    const filter = {};
+    if (user) filter.user = user;
+    if (status) filter.status = status;
+    if (type) filter.type = type;
+    if (startDate || endDate) {
+      filter.date = {};
+      if (startDate) filter.date.$gte = new Date(startDate);
+      if (endDate) filter.date.$lte = new Date(endDate);
+    }
+    const earnings = await Earning.find(filter)
+      .populate('user', 'name email')
+      .sort({ date: -1 });
+    res.json({ earnings });
+  } catch (error) {
+    console.error('Error fetching all earnings:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+});
+
 module.exports = router; 

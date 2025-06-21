@@ -1,33 +1,32 @@
 const express = require('express');
 const router = express.Router();
 const {
-  registerUser,
-  loginUser,
+  register,
+  login,
   getMe,
-  requestPasswordReset,
-  resetPassword,
-  updateUserProfile,
   getAllUsers,
-  updateUserById
+  updateUser,
+  deleteUser,
+  getUserById,
+  bulkDeleteUsers,
 } = require('../controllers/userController');
-const { getEarnings } = require('../controllers/earningsController');
-const { protect } = require('../middleware/authMiddleware');
+const { protect, admin } = require('../middleware/authMiddleware');
 
 // Public routes
-router.post('/', registerUser);
-router.post('/login', loginUser);
-router.post('/request-password-reset', requestPasswordReset);
-router.put('/reset-password/:token', resetPassword);
+router.post('/register', register);
+router.post('/login', login);
 
 // Protected routes
 router.get('/me', protect, getMe);
-router.put('/me', protect, updateUserProfile);
-router.get('/earnings', protect, getEarnings);
 
-// Admin route to get all users
-router.get('/', protect, getAllUsers);
+// Admin routes
+router.route('/')
+  .get(protect, admin, getAllUsers)
+  .delete(protect, admin, bulkDeleteUsers);
 
-// Admin route to update any user
-router.put('/:id', protect, updateUserById);
+router.route('/:id')
+  .get(protect, admin, getUserById)
+  .put(protect, admin, updateUser)
+  .delete(protect, admin, deleteUser);
 
 module.exports = router; 
