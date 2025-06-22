@@ -12,7 +12,7 @@ const earningSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['direct', 'level', 'rank', 'reward'],
+    enum: ['direct', 'level', 'rank', 'reward', 'withdrawal'],
     required: true
   },
   description: {

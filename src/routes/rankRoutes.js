@@ -16,16 +16,14 @@ const {
 router.get('/', getRanks);
 router.get('/:id', getRank);
 
-// Protected routes
-router.use(protect);
-router.get('/user/rank', getUserRank);
-router.put('/user/progress', updateUserRankProgress);
-router.post('/user/achievement', addAchievement);
+// Protected user routes
+router.get('/user/my-status', protect, getUserRank);
+router.put('/user/progress', protect, updateUserRankProgress);
+router.post('/user/achievement', protect, addAchievement);
 
 // Admin routes
-router.use(admin);
-router.post('/', createRank);
-router.put('/:id', updateRank);
-router.delete('/:id', deleteRank);
+router.post('/', protect, admin, createRank);
+router.put('/:id', protect, admin, updateRank);
+router.delete('/:id', protect, admin, deleteRank);
 
-module.exports = router; 
+module.exports = router;

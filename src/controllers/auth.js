@@ -87,16 +87,19 @@ exports.login = async (req, res) => {
       });
     }
 
+    const userObject = user.toObject();
+
+    if (user.referredBy) {
+      const referrer = await User.findOne({ referralCode: user.referredBy }).select('name');
+      if (referrer) {
+        userObject.referrerName = referrer.name;
+      }
+    }
+
     res.status(200).json({
       success: true,
       token: generateToken(user._id),
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        referralCode: user.referralCode,
-      },
+      user: userObject,
     });
   } catch (error) {
     res.status(500).json({
@@ -112,9 +115,26 @@ exports.login = async (req, res) => {
 exports.getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    const userObject = user.toObject();
+
+    if (user.referredBy) {
+      const referrer = await User.findOne({ referralCode: user.referredBy }).select('name');
+      if (referrer) {
+        userObject.referrerName = referrer.name;
+      }
+    }
+
     res.status(200).json({
       success: true,
-      data: user,
+      user: userObject,
     });
   } catch (error) {
     res.status(500).json({

@@ -41,7 +41,7 @@ app.use(helmet({
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 10 * 60 * 1000, // 10 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+  max: process.env.NODE_ENV === 'development' ? 1000 : 100 // More lenient in development
 });
 app.use('/api', limiter);
 
@@ -72,6 +72,7 @@ const contactRoutes = require('./routes/contactRoutes');
 const returnRoutes = require('./routes/returnRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const withdrawalRoutes = require('./routes/withdrawalRoutes');
+const dashboardRoutes = require('./routes/dashboardRoutes');
 
 // API Routes
 app.use('/api/users', userRoutes);
@@ -81,13 +82,14 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/addresses', addressRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/ranks', rankRoutes);
-app.use('/api/users/earnings', earningsRoutes);
-app.use('/api/users/network', networkRoutes);
+app.use('/api/earnings', earningsRoutes);
+app.use('/api/network', networkRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/contacts', contactRoutes);
 app.use('/api/returns', returnRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/withdrawals', withdrawalRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 // Handle 404 errors
 app.use(notFound);
@@ -95,4 +97,4 @@ app.use(notFound);
 // Error handler
 app.use(errorHandler);
 
-module.exports = app; 
+module.exports = app;

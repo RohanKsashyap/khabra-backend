@@ -1,18 +1,19 @@
 const express = require('express');
 const router = express.Router();
-const { protect } = require('../middleware/auth');
-const { requestWithdrawal, getMyWithdrawals, getAllWithdrawals, updateWithdrawalStatus } = require('../controllers/withdrawalController');
+const {
+  createWithdrawalRequest,
+  getMyWithdrawalRequests,
+  getAllWithdrawalRequests,
+  updateWithdrawalRequestStatus,
+} = require('../controllers/withdrawalController');
+const { protect, admin } = require('../middleware/authMiddleware');
 
-// User requests a withdrawal
-router.post('/request', protect, requestWithdrawal);
+// User routes
+router.route('/request').post(protect, createWithdrawalRequest);
+router.route('/my-requests').get(protect, getMyWithdrawalRequests);
 
-// User views their withdrawal history
-router.get('/my', protect, getMyWithdrawals);
-
-// Admin: view all withdrawal requests
-router.get('/all', protect, getAllWithdrawals);
-
-// Admin: approve/reject a withdrawal request
-router.put('/:id', protect, updateWithdrawalStatus);
+// Admin routes
+router.route('/').get(protect, admin, getAllWithdrawalRequests);
+router.route('/:id').put(protect, admin, updateWithdrawalRequestStatus);
 
 module.exports = router; 

@@ -49,7 +49,11 @@ exports.getDefaultAddress = asyncHandler(async (req, res, next) => {
   });
 
   if (!address) {
-    return next(new ErrorResponse('No default address found', 404));
+    // Return a successful response with null data if no default address is found
+    return res.status(200).json({
+      success: true,
+      data: null
+    });
   }
 
   res.status(200).json({

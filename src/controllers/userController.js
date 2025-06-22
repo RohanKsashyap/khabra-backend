@@ -55,9 +55,23 @@ exports.login = asyncHandler(async (req, res, next) => {
 // @access  Private
 exports.getMe = asyncHandler(async (req, res, next) => {
   const user = await User.findById(req.user.id);
+
+  if (!user) {
+    return next(new ErrorResponse('User not found', 404));
+  }
+
+  const userObject = user.toObject();
+
+  if (user.referredBy) {
+    const referrer = await User.findOne({ referralCode: user.referredBy }).select('name');
+    if (referrer) {
+      userObject.referrerName = referrer.name;
+    }
+  }
+
   res.status(200).json({
     success: true,
-    data: user,
+    data: userObject,
   });
 });
 

@@ -1,10 +1,12 @@
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
+const path = require('path'); // Import path module
 const Product = require('./models/Product');
+const Rank = require('./models/Rank');
 const connectDB = require('./config/db');
 
-// Load env vars
-dotenv.config();
+// Load env vars from parent directory
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 // Connect to database
 connectDB();
@@ -63,11 +65,49 @@ const products = [
   },
 ];
 
+// Sample Ranks
+const ranks = [
+  {
+    name: 'Bronze',
+    level: 1,
+    requirements: { directReferrals: 2, teamSize: 5, teamSales: 50000 },
+    rewards: { commission: 5, bonus: 1000 },
+  },
+  {
+    name: 'Silver',
+    level: 2,
+    requirements: { directReferrals: 5, teamSize: 15, teamSales: 150000 },
+    rewards: { commission: 7, bonus: 3000 },
+  },
+  {
+    name: 'Gold',
+    level: 3,
+    requirements: { directReferrals: 10, teamSize: 30, teamSales: 300000 },
+    rewards: { commission: 10, bonus: 5000 },
+  },
+  {
+    name: 'Platinum',
+    level: 4,
+    requirements: { directReferrals: 20, teamSize: 50, teamSales: 500000 },
+    rewards: { commission: 12, bonus: 10000 },
+  },
+  {
+    name: 'Diamond',
+    level: 5,
+    requirements: { directReferrals: 30, teamSize: 100, teamSales: 1000000 },
+    rewards: { commission: 15, bonus: 20000 },
+  },
+];
+
 // Import data
 const importData = async () => {
   try {
     await Product.deleteMany();
+    await Rank.deleteMany();
+
     await Product.insertMany(products);
+    await Rank.insertMany(ranks);
+
     console.log('Data Imported!');
     process.exit();
   } catch (error) {
@@ -80,6 +120,7 @@ const importData = async () => {
 const destroyData = async () => {
   try {
     await Product.deleteMany();
+    await Rank.deleteMany();
     console.log('Data Destroyed!');
     process.exit();
   } catch (error) {
