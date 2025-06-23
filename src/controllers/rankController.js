@@ -1,5 +1,8 @@
 const Rank = require('../models/Rank');
 const UserRank = require('../models/UserRank');
+const Order = require('../models/Order');
+const User = require('../models/User');
+const Network = require('../models/Network');
 
 // Get all ranks
 exports.getRanks = async (req, res) => {
@@ -98,7 +101,9 @@ exports.getUserRank = async (req, res) => {
       nextRank,
       progress: userRank.progress,
       achievements: userRank.achievements,
-      rankHistory: userRank.rankHistory
+      rankHistory: userRank.rankHistory,
+      personalPV: userRank.progress.personalPV || 0,
+      teamPV: userRank.progress.teamPV || 0
     });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching user rank', error: error.message });
@@ -108,48 +113,78 @@ exports.getUserRank = async (req, res) => {
 // Update user's rank progress
 exports.updateUserRankProgress = async (req, res) => {
   try {
-    const { directReferrals, teamSize, teamSales } = req.body;
-    
-    const userRank = await UserRank.findOne({ user: req.user._id })
-      .populate('currentRank');
+    // Time window: current month
+    const now = new Date();
+    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
+    // Helper to get personal PV in time window
+    const getPersonalPV = async (userId) => {
+      const orders = await Order.find({
+        user: userId,
+        createdAt: { $gte: firstDayOfMonth, $lte: now },
+        status: { $in: ['processing', 'shipped', 'delivered'] },
+      });
+      return orders.reduce((sum, order) => sum + (order.totalPV || 0), 0);
+    };
+
+    // Helper to get all downline user IDs recursively
+    const getDownlineUserIds = async (userId) => {
+      const user = await User.findById(userId);
+      if (!user || !user.referralCode) return [];
+      const directDownlines = await User.find({ referredBy: user.referralCode });
+      let all = [];
+      for (const downline of directDownlines) {
+        all.push(downline._id);
+        const subDownlines = await getDownlineUserIds(downline._id);
+        all = all.concat(subDownlines);
+      }
+      return all;
+    };
+
+    // Calculate user's own PV
+    const userId = req.user._id;
+    const personalPV = await getPersonalPV(userId);
+
+    // Calculate downline PV
+    const downlineUserIds = await getDownlineUserIds(userId);
+    let downlinePV = 0;
+    for (const downlineId of downlineUserIds) {
+      downlinePV += await getPersonalPV(downlineId);
+    }
+    const totalTeamPV = personalPV + downlinePV;
+
+    // Update progress in UserRank
+    const userRank = await UserRank.findOne({ user: userId }).populate('currentRank');
     if (!userRank) {
       return res.status(404).json({ message: 'User rank not found' });
     }
-
-    // Update progress
     userRank.progress = {
-      directReferrals: directReferrals || userRank.progress.directReferrals,
-      teamSize: teamSize || userRank.progress.teamSize,
-      teamSales: teamSales || userRank.progress.teamSales
+      ...userRank.progress,
+      personalPV,
+      teamPV: totalTeamPV,
     };
 
-    // Check for rank up
+    // Check for rank up (assume requirements.personalPV and requirements.teamPV in Rank model)
     const nextRank = await Rank.findOne({ level: userRank.currentRank.level + 1 });
     if (nextRank) {
-      const canRankUp = 
-        userRank.progress.directReferrals >= nextRank.requirements.directReferrals &&
-        userRank.progress.teamSize >= nextRank.requirements.teamSize &&
-        userRank.progress.teamSales >= nextRank.requirements.teamSales;
-
+      const canRankUp =
+        personalPV >= (nextRank.requirements.personalPV || 0) &&
+        totalTeamPV >= (nextRank.requirements.teamPV || 0);
       if (canRankUp) {
         userRank.currentRank = nextRank._id;
         userRank.rankHistory.push({
           rank: nextRank._id,
-          achievedAt: new Date()
+          achievedAt: new Date(),
         });
-
-        // Add achievement for rank up
         userRank.achievements.push({
           name: `Reached ${nextRank.name} Rank`,
           description: `Successfully achieved ${nextRank.name} rank`,
           date: new Date(),
           reward: nextRank.rewards.bonus,
-          type: 'rank_up'
+          type: 'rank_up',
         });
       }
     }
-
     await userRank.save();
     res.json(userRank);
   } catch (error) {

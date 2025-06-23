@@ -26,6 +26,16 @@ const userRankSchema = new mongoose.Schema({
       type: Number,
       default: 0,
       min: 0
+    },
+    personalPV: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    teamPV: {
+      type: Number,
+      default: 0,
+      min: 0
     }
   },
   achievements: [{

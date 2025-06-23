@@ -70,31 +70,31 @@ const ranks = [
   {
     name: 'Bronze',
     level: 1,
-    requirements: { directReferrals: 2, teamSize: 5, teamSales: 50000 },
+    requirements: { directReferrals: 2, teamSize: 5, teamSales: 50000, personalPV: 1000, teamPV: 50000 },
     rewards: { commission: 5, bonus: 1000 },
   },
   {
     name: 'Silver',
     level: 2,
-    requirements: { directReferrals: 5, teamSize: 15, teamSales: 150000 },
+    requirements: { directReferrals: 5, teamSize: 15, teamSales: 150000, personalPV: 3000, teamPV: 150000 },
     rewards: { commission: 7, bonus: 3000 },
   },
   {
     name: 'Gold',
     level: 3,
-    requirements: { directReferrals: 10, teamSize: 30, teamSales: 300000 },
+    requirements: { directReferrals: 10, teamSize: 30, teamSales: 300000, personalPV: 6000, teamPV: 300000 },
     rewards: { commission: 10, bonus: 5000 },
   },
   {
     name: 'Platinum',
     level: 4,
-    requirements: { directReferrals: 20, teamSize: 50, teamSales: 500000 },
+    requirements: { directReferrals: 20, teamSize: 50, teamSales: 500000, personalPV: 12000, teamPV: 500000 },
     rewards: { commission: 12, bonus: 10000 },
   },
   {
     name: 'Diamond',
     level: 5,
-    requirements: { directReferrals: 30, teamSize: 100, teamSales: 1000000 },
+    requirements: { directReferrals: 30, teamSize: 100, teamSales: 1000000, personalPV: 25000, teamPV: 1000000 },
     rewards: { commission: 15, bonus: 20000 },
   },
 ];

@@ -27,6 +27,18 @@ const rankSchema = new mongoose.Schema({
       type: Number,
       required: true,
       min: 0
+    },
+    personalPV: {
+      type: Number,
+      required: false,
+      min: 0,
+      default: 0
+    },
+    teamPV: {
+      type: Number,
+      required: false,
+      min: 0,
+      default: 0
     }
   },
   rewards: {

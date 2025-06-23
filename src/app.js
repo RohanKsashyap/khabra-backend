@@ -73,6 +73,7 @@ const returnRoutes = require('./routes/returnRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const withdrawalRoutes = require('./routes/withdrawalRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
+const franchiseRoutes = require('./routes/franchiseRoutes');
 
 // API Routes
 app.use('/api/users', userRoutes);
@@ -90,6 +91,7 @@ app.use('/api/returns', returnRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/withdrawals', withdrawalRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/v1/franchises', franchiseRoutes);
 
 // Handle 404 errors
 app.use(notFound);

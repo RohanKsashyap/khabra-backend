@@ -8,6 +8,7 @@ const Address = require('../models/Address');
 const User = require('../models/User');
 const mongoose = require('mongoose');
 const { distributeMLMCommission } = require('../utils/mlmCommission');
+const { updateUserRankProgress } = require('./rankController');
 
 // Create new order
 exports.createOrder = async (req, res) => {
@@ -246,9 +247,12 @@ exports.addTrackingUpdate = async (req, res) => {
     // If order is delivered, update order status
     if (status === 'delivered') {
       order.status = 'delivered';
+      await order.save();
+      // Trigger rank evaluation for user and uplines
+      await updateRankForUserAndUplines(order.user);
+    } else {
+      await order.save();
     }
-
-    await order.save();
 
     // Send tracking update email
     await sendOrderStatusEmail(order.user, {
@@ -483,4 +487,19 @@ exports.getAllOrders = asyncHandler(async (req, res, next) => {
     count: orders.length,
     data: orders
   });
-}); 
+});
+
+// Helper to update rank for user and uplines
+async function updateRankForUserAndUplines(userId) {
+  let user = await User.findById(userId);
+  const processed = new Set();
+  while (user && user.referredBy && !processed.has(user._id.toString())) {
+    await updateUserRankProgress({ user: { _id: user._id } }, { json: () => {} });
+    processed.add(user._id.toString());
+    user = await User.findOne({ referralCode: user.referredBy });
+  }
+  // Also update for the original user
+  if (user && !processed.has(user._id.toString())) {
+    await updateUserRankProgress({ user: { _id: user._id } }, { json: () => {} });
+  }
+} 
