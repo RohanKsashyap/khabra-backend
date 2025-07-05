@@ -27,7 +27,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['user', 'distributor', 'admin'],
+    enum: ['user', 'distributor', 'admin', 'franchise_owner'],
     default: 'user',
   },
   referralCode: {
@@ -64,6 +64,10 @@ const userSchema = new mongoose.Schema({
   },
   resetPasswordToken: String,
   resetPasswordExpire: Date,
+  referralChain: {
+    type: [String],
+    default: [],
+  },
 }, {
   timestamps: true,
 });

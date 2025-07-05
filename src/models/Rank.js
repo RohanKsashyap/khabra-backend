@@ -47,11 +47,6 @@ const rankSchema = new mongoose.Schema({
       required: true,
       min: 0,
       max: 100
-    },
-    bonus: {
-      type: Number,
-      required: true,
-      min: 0
     }
   },
   benefits: [{

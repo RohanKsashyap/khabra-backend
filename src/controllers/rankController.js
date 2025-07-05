@@ -3,6 +3,7 @@ const UserRank = require('../models/UserRank');
 const Order = require('../models/Order');
 const User = require('../models/User');
 const Network = require('../models/Network');
+const MLMCommissionConfig = require('../models/MLMCommissionConfig');
 
 // Get all ranks
 exports.getRanks = async (req, res) => {
@@ -214,5 +215,40 @@ exports.addAchievement = async (req, res) => {
     res.json(userRank);
   } catch (error) {
     res.status(500).json({ message: 'Error adding achievement', error: error.message });
+  }
+};
+
+// Get current MLM commission rates
+exports.getCommissionRates = async (req, res) => {
+  try {
+    let config = await MLMCommissionConfig.findOne();
+    if (!config) {
+      config = await MLMCommissionConfig.create({});
+    }
+    res.json({ rates: config.rates });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch commission rates', error: err.message });
+  }
+};
+
+// Update MLM commission rates (admin only)
+exports.updateCommissionRates = async (req, res) => {
+  try {
+    const { rates } = req.body;
+    if (!Array.isArray(rates) || rates.length !== 5) {
+      return res.status(400).json({ message: 'Rates must be an array of 5 numbers.' });
+    }
+    let config = await MLMCommissionConfig.findOne();
+    if (!config) {
+      config = await MLMCommissionConfig.create({ rates, updatedBy: req.user._id });
+    } else {
+      config.rates = rates;
+      config.updatedBy = req.user._id;
+      config.updatedAt = new Date();
+      await config.save();
+    }
+    res.json({ message: 'Commission rates updated', rates: config.rates });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to update commission rates', error: err.message });
   }
 }; 

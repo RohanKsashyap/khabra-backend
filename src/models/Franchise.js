@@ -43,6 +43,15 @@ const franchiseSchema = new mongoose.Schema({
     openingDate: {
         type: Date,
         default: Date.now
+    },
+    owner: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: true
+    },
+    commissionPercentage: {
+        type: Number,
+        required: true
     }
 }, {
     timestamps: true

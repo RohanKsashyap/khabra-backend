@@ -9,7 +9,9 @@ const {
   deleteRank,
   getUserRank,
   updateUserRankProgress,
-  addAchievement
+  addAchievement,
+  getCommissionRates,
+  updateCommissionRates
 } = require('../controllers/rankController');
 
 // Public routes
@@ -25,5 +27,10 @@ router.post('/user/achievement', protect, addAchievement);
 router.post('/', protect, admin, createRank);
 router.put('/:id', protect, admin, updateRank);
 router.delete('/:id', protect, admin, deleteRank);
+
+// Get MLM commission rates
+router.get('/mlm-commission', protect, admin, getCommissionRates);
+// Update MLM commission rates
+router.put('/mlm-commission', protect, admin, updateCommissionRates);
 
 module.exports = router;

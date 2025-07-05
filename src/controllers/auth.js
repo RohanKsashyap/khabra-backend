@@ -25,6 +25,14 @@ exports.register = async (req, res) => {
       });
     }
 
+    let referralChain = [];
+    if (referredBy) {
+      const referrer = await User.findOne({ referralCode: referredBy });
+      if (referrer) {
+        referralChain = [...(referrer.referralChain || []), referrer._id.toString()];
+      }
+    }
+
     // Create user
     const user = await User.create({
       name,
@@ -32,6 +40,7 @@ exports.register = async (req, res) => {
       password,
       phone,
       referredBy,
+      referralChain,
     });
 
     // If user was referred, update referrer's network

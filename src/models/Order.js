@@ -10,7 +10,7 @@ const orderSchema = new mongoose.Schema({
     product: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Product',
-      required: true
+      required: false
     },
     productName: {
       type: String,
@@ -138,6 +138,11 @@ const orderSchema = new mongoose.Schema({
     enum: ['card', 'upi', 'netbanking', 'cod'],
     required: true
   },
+  franchise: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Franchise',
+    required: false
+  },
   paymentDetails: {
     type: mongoose.Schema.Types.Mixed
   },
@@ -164,6 +169,11 @@ const orderSchema = new mongoose.Schema({
     }]
   },
   deliveryNotes: String,
+  orderType: {
+    type: String,
+    enum: ['online', 'offline'],
+    default: 'online'
+  },
 }, {
   timestamps: true
 });

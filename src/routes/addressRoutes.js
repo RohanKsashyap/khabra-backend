@@ -7,11 +7,15 @@ const {
   updateAddress,
   deleteAddress,
   setDefaultAddress,
-  getDefaultAddress
+  getDefaultAddress,
+  getAddressesByUserId
 } = require('../controllers/addressController');
 
 // All routes are protected
 router.use(protect);
+
+// Get all addresses for a specific user (admin only)
+router.get('/user/:userId', getAddressesByUserId);
 
 // Get all addresses
 router.get('/', getAddresses);

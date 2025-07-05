@@ -69,8 +69,26 @@ const clearUserEarnings = asyncHandler(async (req, res) => {
   });
 });
 
+// @route   DELETE /api/earnings/admin/clear-all
+// @desc    Clear all earnings for all users (admin only)
+// @access  Private/Admin
+const clearAllEarnings = asyncHandler(async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ message: 'Forbidden' });
+  }
+  await Earning.deleteMany({});
+  const count = await Earning.countDocuments({});
+  console.log('Earnings remaining after clear:', count);
+  res.status(200).json({
+    success: true,
+    message: 'All users\' earnings history cleared successfully.',
+    remaining: count,
+  });
+});
+
 module.exports = {
   getUserEarnings,
   getAllEarnings,
   clearUserEarnings,
+  clearAllEarnings,
 }; 

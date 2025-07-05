@@ -107,4 +107,12 @@ exports.updateReturnRequestStatus = asyncHandler(async (req, res) => {
   }
 
   res.json({ message: 'Return request updated', updatedReturnRequest });
+});
+
+// @desc    Delete all return requests (Admin only)
+// @route   DELETE /api/returns/admin/all
+// @access  Private/Admin
+exports.deleteAllReturnRequests = asyncHandler(async (req, res) => {
+  await ReturnRequest.deleteMany({});
+  res.json({ message: 'All return requests deleted successfully' });
 });  

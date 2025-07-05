@@ -45,9 +45,6 @@ exports.createOrder = async (req, res) => {
     await order.save();
     console.log('Order saved successfully:', order._id);
 
-    // Distribute MLM commissions for this order
-    await distributeMLMCommission(order);
-
     // Send order confirmation email
     await sendOrderStatusEmail(req.user.email, {
       orderId: order._id,
@@ -180,6 +177,9 @@ exports.updateOrderStatus = async (req, res) => {
       return res.status(404).json({ message: 'Order not found' });
     }
 
+    // Store previous status before updating
+    const previousStatus = order.status;
+
     // Update order status
     order.status = status;
 
@@ -217,6 +217,13 @@ exports.updateOrderStatus = async (req, res) => {
       estimatedDelivery: order.tracking?.estimatedDelivery
     });
 
+    // FIX: Only distribute commission if previous status was not delivered and new status is delivered
+    if (previousStatus !== 'delivered' && status === 'delivered') {
+      // Distribute MLM commissions and PV only on delivery
+      await distributeMLMCommission(order);
+      // Optionally, update user's PV here if needed
+    }
+
     res.json(order);
   } catch (error) {
     res.status(500).json({ message: 'Error updating order status', error: error.message });
@@ -250,6 +257,9 @@ exports.addTrackingUpdate = async (req, res) => {
       await order.save();
       // Trigger rank evaluation for user and uplines
       await updateRankForUserAndUplines(order.user);
+      // Distribute MLM commissions and PV only on delivery
+      await distributeMLMCommission(order);
+      // Optionally, update user's PV here if needed
     } else {
       await order.save();
     }
@@ -502,4 +512,153 @@ async function updateRankForUserAndUplines(userId) {
   if (user && !processed.has(user._id.toString())) {
     await updateUserRankProgress({ user: { _id: user._id } }, { json: () => {} });
   }
-} 
+}
+
+// Get total sales for each product (admin only)
+exports.getTotalProductSales = async (req, res) => {
+  try {
+    const sales = await Order.aggregate([
+      { $match: { status: 'delivered' } },
+      { $unwind: '$items' },
+      {
+        $group: {
+          _id: {
+            product: '$items.product',
+            productName: '$items.productName',
+            productPrice: '$items.productPrice',
+            productImage: '$items.productImage',
+            orderType: '$orderType'
+          },
+          totalQuantity: { $sum: '$items.quantity' },
+          totalSales: { $sum: { $multiply: ['$items.productPrice', '$items.quantity'] } }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          productId: '$_id.product',
+          productName: '$_id.productName',
+          productPrice: '$_id.productPrice',
+          productImage: '$_id.productImage',
+          orderType: '$_id.orderType',
+          totalQuantity: 1,
+          totalSales: 1
+        }
+      },
+      { $sort: { totalSales: -1 } }
+    ]);
+    res.json({ success: true, data: sales });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Create new order (Admin)
+exports.createAdminOrder = asyncHandler(async (req, res) => {
+  const {
+    userId,
+    items,
+    status = 'delivered', // Default to delivered for offline orders
+    paymentMethod = 'cod',
+    paymentStatus = 'paid',
+    orderType // allow explicit orderType, or infer below
+  } = req.body;
+
+  if (!userId || !items || !items.length) {
+    throw new ErrorResponse('User ID and items are required', 400);
+  }
+
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new ErrorResponse(`User not found with id of ${userId}`, 404);
+  }
+
+  let totalAmount = 0;
+  const orderItems = [];
+  let allItemsHaveProduct = true;
+
+  for (const item of items) {
+    let productDoc = null;
+    if (item.product) {
+      try {
+        productDoc = await Product.findById(item.product);
+      } catch (e) {
+        productDoc = null;
+      }
+    }
+    if (productDoc) {
+      if (productDoc.stock < item.quantity) {
+        throw new ErrorResponse(`Not enough stock for ${productDoc.name}`, 400);
+      }
+      orderItems.push({
+        product: productDoc._id,
+        productName: productDoc.name,
+        productPrice: productDoc.price,
+        productImage: productDoc.image,
+        quantity: item.quantity,
+        productDetails: item.productDetails || '',
+      });
+      totalAmount += productDoc.price * item.quantity;
+    } else {
+      // Custom/offline product
+      allItemsHaveProduct = false;
+      if (!item.productName || !item.productPrice || !item.productImage) {
+        throw new ErrorResponse('Custom products must include productName, productPrice, and productImage', 400);
+      }
+      orderItems.push({
+        productName: item.productName,
+        productPrice: item.productPrice,
+        productImage: item.productImage,
+        quantity: item.quantity,
+        productDetails: item.productDetails || '',
+      });
+      totalAmount += Number(item.productPrice) * item.quantity;
+    }
+  }
+
+  const dummyAddress = user.address || {
+    fullName: user.name,
+    addressLine1: 'N/A',
+    city: 'N/A',
+    state: 'N/A',
+    postalCode: '000000',
+    country: 'India',
+    phone: user.phone || '0000000000',
+  };
+
+  // Determine orderType if not provided
+  const finalOrderType = orderType || (allItemsHaveProduct ? 'online' : 'offline');
+
+  const order = new Order({
+    user: userId,
+    items: orderItems,
+    shippingAddress: dummyAddress,
+    billingAddress: dummyAddress,
+    paymentMethod,
+    totalAmount,
+    status,
+    paymentStatus,
+    orderType: finalOrderType
+  });
+
+  await order.save();
+
+  // Update stock only for real products
+  for (const item of orderItems) {
+    if (item.product) {
+      await Product.findByIdAndUpdate(item.product, { $inc: { stock: -item.quantity } });
+    }
+  }
+
+  // Distribute commissions if delivered and at least one real product
+  if (status === 'delivered' && orderItems.some(i => i.product)) {
+    await distributeMLMCommission(order);
+  }
+
+  res.status(201).json(order);
+});
+
+// Get logged in user orders
+exports.getMyOrders = asyncHandler(async (req, res) => {
+  // ... existing code ...
+}); 

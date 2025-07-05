@@ -38,13 +38,6 @@ app.use(helmet({
   crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" }
 }));
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 10 * 60 * 1000, // 10 minutes
-  max: process.env.NODE_ENV === 'development' ? 1000 : 100 // More lenient in development
-});
-app.use('/api', limiter);
-
 // Sanitize data
 app.use(mongoSanitize());
 
@@ -56,6 +49,15 @@ app.use(hpp());
 
 // Compress responses
 app.use(compression());
+
+// Rate limiting
+if (process.env.NODE_ENV !== 'development') {
+  const limiter = rateLimit({
+    windowMs: 10 * 60 * 1000, // 10 minutes
+    max: 10000
+  });
+  app.use('/api', limiter);
+}
 
 // Routes
 const userRoutes = require('./routes/userRoutes');

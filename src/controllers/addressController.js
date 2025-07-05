@@ -157,4 +157,16 @@ exports.setDefaultAddress = async (req, res) => {
   } catch (error) {
     res.status(500).json({ message: 'Error setting default address', error: error.message });
   }
-}; 
+};
+
+// @desc    Get all addresses for a specific user (admin only)
+// @route   GET /api/addresses/user/:userId
+// @access  Private/Admin
+exports.getAddressesByUserId = asyncHandler(async (req, res, next) => {
+  // Only allow admin
+  if (!req.user || req.user.role !== 'admin') {
+    return next(new ErrorResponse('Not authorized as admin', 403));
+  }
+  const addresses = await Address.find({ user: req.params.userId });
+  res.json(addresses);
+}); 
