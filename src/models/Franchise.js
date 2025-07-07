@@ -6,6 +6,11 @@ const franchiseSchema = new mongoose.Schema({
         required: [true, 'Franchise name is required'],
         trim: true
     },
+    location: {
+        type: String,
+        required: [true, 'Location is required'],
+        trim: true
+    },
     district: {
         type: String,
         required: [true, 'District is required'],
@@ -44,17 +49,47 @@ const franchiseSchema = new mongoose.Schema({
         type: Date,
         default: Date.now
     },
-    owner: {
+    ownerId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
         required: true
     },
     commissionPercentage: {
         type: Number,
-        required: true
+        required: true,
+        min: 0,
+        max: 100
+    },
+    // Franchise statistics
+    totalSales: {
+        online: {
+            type: Number,
+            default: 0
+        },
+        offline: {
+            type: Number,
+            default: 0
+        },
+        total: {
+            type: Number,
+            default: 0
+        }
+    },
+    totalDownline: {
+        type: Number,
+        default: 0
+    },
+    totalCommission: {
+        type: Number,
+        default: 0
     }
 }, {
     timestamps: true
 });
+
+// Indexes for better performance
+franchiseSchema.index({ ownerId: 1 });
+franchiseSchema.index({ district: 1 });
+franchiseSchema.index({ status: 1 });
 
 module.exports = mongoose.model('Franchise', franchiseSchema); 

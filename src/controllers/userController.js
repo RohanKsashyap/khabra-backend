@@ -14,12 +14,27 @@ const { sendTokenResponse } = require('../middleware/auth');
 exports.register = asyncHandler(async (req, res, next) => {
   const { name, email, password, phone, referredBy } = req.body;
 
+  let uplineId = null;
+  let referralChain = [];
+
+  if (referredBy) {
+    // Find the referrer by referral code
+    const referrer = await User.findOne({ referralCode: referredBy });
+    if (referrer) {
+      uplineId = referrer._id;
+      // Build referral chain: [referrer, ...referrer's chain]
+      referralChain = [referrer._id.toString(), ...(referrer.referralChain || [])];
+    }
+  }
+
   const user = await User.create({
     name,
     email,
     password,
     phone,
     referredBy,
+    uplineId,
+    referralChain
   });
 
   sendTokenResponse(user, 201, res);

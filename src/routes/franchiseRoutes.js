@@ -7,25 +7,37 @@ const {
     updateFranchise,
     deleteFranchise,
     getFranchisesByDistrict,
-    getAllFranchiseSales,
-    getMyFranchiseSales
+    getAllFranchisesOverview,
+    getFranchiseDetails,
+    getMyFranchiseSales,
+    createFranchiseOrder,
+    addDownlineMember,
+    getFranchiseStatistics
 } = require('../controllers/franchiseController');
 
 const { protect, authorize } = require('../middleware/auth');
 const requireRole = require('../middleware/roleMiddleware');
 
 // Public routes
-router.get('/', getFranchises);
-router.get('/:id', getFranchise);
 router.get('/district/:district', getFranchisesByDistrict);
 
 // Admin only routes
-router.post('/', protect, authorize('admin'), createFranchise);
-router.put('/:id', protect, authorize('admin'), updateFranchise);
-router.delete('/:id', protect, authorize('admin'), deleteFranchise);
+router.get('/', protect, requireRole('admin'), getFranchises);
+router.post('/', protect, requireRole('admin'), createFranchise);
+router.put('/:id', protect, requireRole('admin'), updateFranchise);
+router.delete('/:id', protect, requireRole('admin'), deleteFranchise);
 
-// Franchise sales/commission routes
-router.get('/admin/sales', protect, requireRole('admin'), getAllFranchiseSales);
+// Admin franchise management routes
+router.get('/admin/overview', protect, requireRole('admin'), getAllFranchisesOverview);
+router.get('/admin/statistics', protect, requireRole('admin'), getFranchiseStatistics);
+router.get('/:id/details', protect, requireRole('admin'), getFranchiseDetails);
+
+// Franchise owner routes
 router.get('/my/sales', protect, requireRole('franchise_owner'), getMyFranchiseSales);
+router.post('/orders', protect, requireRole('franchise_owner'), createFranchiseOrder);
+router.post('/downline', protect, requireRole('franchise_owner'), addDownlineMember);
+
+// Single franchise route (accessible by admin and franchise owner)
+router.get('/:id', protect, getFranchise);
 
 module.exports = router; 

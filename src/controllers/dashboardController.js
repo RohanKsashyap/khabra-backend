@@ -12,24 +12,32 @@ exports.getDashboardOverview = asyncHandler(async (req, res, next) => {
   const userId = req.user._id;
 
   // --- Earnings ---
-  const earnings = await Earning.find({ user: userId });
-  const totalEarnings = earnings.reduce((sum, earning) => sum + earning.amount, 0);
+  const allEarnings = await Earning.find({ user: userId });
+  const totalEarnings = allEarnings.reduce((sum, earning) => sum + earning.amount, 0);
+  const pendingEarnings = allEarnings
+    .filter(e => e.status === 'pending')
+    .reduce((sum, earning) => sum + earning.amount, 0);
+  const paidEarnings = allEarnings
+    .filter(e => e.status === 'paid' || e.status === 'completed')
+    .reduce((sum, earning) => sum + earning.amount, 0);
+
   const now = new Date();
   const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const earningsThisMonth = earnings
+  const earningsThisMonth = allEarnings
     .filter(earning => new Date(earning.date) >= firstDayOfMonth)
     .reduce((sum, earning) => sum + earning.amount, 0);
 
   // --- Orders & Personal PV ---
   const orders = await Order.find({ user: userId });
+  const deliveredOrders = orders.filter(order => order.status === 'delivered');
   const totalOrders = orders.length;
   const ordersThisMonth = orders.filter(
     order => new Date(order.createdAt) >= firstDayOfMonth
   ).length;
 
-  // Assuming 1 currency unit = 1 PV for simplicity.
-  const personalPV = orders.reduce((sum, order) => sum + order.totalAmount, 0);
-  const personalPVThisMonth = orders
+  // Only count PV for delivered orders
+  const personalPV = deliveredOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+  const personalPVThisMonth = deliveredOrders
     .filter(order => new Date(order.createdAt) >= firstDayOfMonth)
     .reduce((sum, order) => sum + order.totalAmount, 0);
     
@@ -77,6 +85,8 @@ exports.getDashboardOverview = asyncHandler(async (req, res, next) => {
     data: {
       earnings: {
         total: totalEarnings,
+        pending: pendingEarnings,
+        paid: paidEarnings,
         thisMonth: earningsThisMonth,
       },
       orders: {

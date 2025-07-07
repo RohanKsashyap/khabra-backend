@@ -24,6 +24,9 @@ router.route('/')
   .get(protect, admin, getAllUsers)
   .delete(protect, admin, bulkDeleteUsers);
 
+// Route for franchise management (doesn't require admin)
+router.get('/franchise-owners', protect, getAllUsers);
+
 router.route('/:id')
   .get(protect, admin, getUserById)
   .put(protect, admin, updateUser)

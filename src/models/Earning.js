@@ -12,12 +12,26 @@ const earningSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['direct', 'level', 'rank', 'reward', 'withdrawal'],
+    enum: ['direct', 'level', 'mlm_level', 'franchise', 'rank', 'reward', 'withdrawal'],
     required: true
+  },
+  level: {
+    type: Number,
+    required: false
   },
   description: {
     type: String,
     required: true
+  },
+  orderId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Order',
+    required: false
+  },
+  franchiseId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Franchise',
+    required: false
   },
   date: {
     type: Date,

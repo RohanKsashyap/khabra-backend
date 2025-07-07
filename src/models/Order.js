@@ -174,6 +174,64 @@ const orderSchema = new mongoose.Schema({
     enum: ['online', 'offline'],
     default: 'online'
   },
+  // MLM Commission tracking
+  commissions: {
+    mlm: [{
+      userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      },
+      level: {
+        type: Number,
+        required: true
+      },
+      amount: {
+        type: Number,
+        required: true
+      },
+      status: {
+        type: String,
+        enum: ['pending', 'paid'],
+        default: 'pending'
+      },
+      paidAt: Date,
+      earningId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Earning'
+      }
+    }],
+    franchise: {
+      franchiseId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Franchise'
+      },
+      amount: {
+        type: Number,
+        default: 0
+      },
+      percentage: {
+        type: Number,
+        default: 0
+      },
+      status: {
+        type: String,
+        enum: ['pending', 'paid'],
+        default: 'pending'
+      },
+      paidAt: Date,
+      earningId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Earning'
+      }
+    }
+  },
+  // Order metadata
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  notes: String
 }, {
   timestamps: true
 });
@@ -182,7 +240,10 @@ const orderSchema = new mongoose.Schema({
 orderSchema.index({ user: 1, createdAt: -1 });
 orderSchema.index({ status: 1 });
 orderSchema.index({ paymentStatus: 1 });
+orderSchema.index({ franchise: 1 });
+orderSchema.index({ orderType: 1 });
 orderSchema.index({ 'tracking.number': 1 });
+orderSchema.index({ createdAt: 1 });
 
 const Order = mongoose.model('Order', orderSchema);
 

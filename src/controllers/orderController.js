@@ -7,8 +7,9 @@ const asyncHandler = require('../middleware/asyncHandler');
 const Address = require('../models/Address');
 const User = require('../models/User');
 const mongoose = require('mongoose');
-const { distributeMLMCommission } = require('../utils/mlmCommission');
+const { distributeAllCommissions } = require('../utils/mlmCommission');
 const { updateUserRankProgress } = require('./rankController');
+const Earning = require('../models/Earning');
 
 // Create new order
 exports.createOrder = async (req, res) => {
@@ -26,7 +27,8 @@ exports.createOrder = async (req, res) => {
       billingAddress,
       paymentMethod,
       paymentDetails,
-      totalAmount
+      totalAmount,
+      franchiseId // Add support for franchise orders
     } = req.body;
 
     const order = new Order({
@@ -38,7 +40,9 @@ exports.createOrder = async (req, res) => {
       paymentDetails,
       totalAmount,
       status: 'pending',
-      paymentStatus: paymentMethod === 'cod' ? 'pending' : 'paid'
+      paymentStatus: paymentMethod === 'cod' ? 'pending' : 'paid',
+      franchise: franchiseId || null, // Set franchise if provided
+      createdBy: req.user._id // Set createdBy to the authenticated user
     });
 
     console.log('Order created with user ID:', order.user);
@@ -219,8 +223,8 @@ exports.updateOrderStatus = async (req, res) => {
 
     // FIX: Only distribute commission if previous status was not delivered and new status is delivered
     if (previousStatus !== 'delivered' && status === 'delivered') {
-      // Distribute MLM commissions and PV only on delivery
-      await distributeMLMCommission(order);
+      // Distribute MLM and franchise commissions only on delivery
+      await distributeAllCommissions(order);
       // Optionally, update user's PV here if needed
     }
 
@@ -257,8 +261,8 @@ exports.addTrackingUpdate = async (req, res) => {
       await order.save();
       // Trigger rank evaluation for user and uplines
       await updateRankForUserAndUplines(order.user);
-      // Distribute MLM commissions and PV only on delivery
-      await distributeMLMCommission(order);
+      // Distribute MLM and franchise commissions only on delivery
+      await distributeAllCommissions(order);
       // Optionally, update user's PV here if needed
     } else {
       await order.save();
@@ -521,16 +525,45 @@ exports.getTotalProductSales = async (req, res) => {
       { $match: { status: 'delivered' } },
       { $unwind: '$items' },
       {
+        $lookup: {
+          from: 'franchises',
+          localField: 'franchise',
+          foreignField: '_id',
+          as: 'franchiseInfo'
+        }
+      },
+      {
+        $addFields: {
+          franchiseName: {
+            $cond: {
+              if: { $gt: [{ $size: '$franchiseInfo' }, 0] },
+              then: { $arrayElemAt: ['$franchiseInfo.name', 0] },
+              else: null
+            }
+          },
+          franchiseOwner: {
+            $cond: {
+              if: { $gt: [{ $size: '$franchiseInfo' }, 0] },
+              then: { $arrayElemAt: ['$franchiseInfo.owner', 0] },
+              else: null
+            }
+          }
+        }
+      },
+      {
         $group: {
           _id: {
             product: '$items.product',
             productName: '$items.productName',
             productPrice: '$items.productPrice',
             productImage: '$items.productImage',
-            orderType: '$orderType'
+            orderType: '$orderType',
+            franchise: '$franchise',
+            franchiseName: '$franchiseName'
           },
           totalQuantity: { $sum: '$items.quantity' },
-          totalSales: { $sum: { $multiply: ['$items.productPrice', '$items.quantity'] } }
+          totalSales: { $sum: { $multiply: ['$items.productPrice', '$items.quantity'] } },
+          orderCount: { $sum: 1 }
         }
       },
       {
@@ -541,8 +574,11 @@ exports.getTotalProductSales = async (req, res) => {
           productPrice: '$_id.productPrice',
           productImage: '$_id.productImage',
           orderType: '$_id.orderType',
+          franchise: '$_id.franchise',
+          franchiseName: '$_id.franchiseName',
           totalQuantity: 1,
-          totalSales: 1
+          totalSales: 1,
+          orderCount: 1
         }
       },
       { $sort: { totalSales: -1 } }
@@ -561,7 +597,8 @@ exports.createAdminOrder = asyncHandler(async (req, res) => {
     status = 'delivered', // Default to delivered for offline orders
     paymentMethod = 'cod',
     paymentStatus = 'paid',
-    orderType // allow explicit orderType, or infer below
+    orderType, // allow explicit orderType, or infer below
+    franchiseId // Add support for franchise orders
   } = req.body;
 
   if (!userId || !items || !items.length) {
@@ -638,7 +675,9 @@ exports.createAdminOrder = asyncHandler(async (req, res) => {
     totalAmount,
     status,
     paymentStatus,
-    orderType: finalOrderType
+    orderType: finalOrderType,
+    franchise: franchiseId || null, // Set franchise if provided
+    createdBy: req.user._id // Set createdBy to the admin user creating the order
   });
 
   await order.save();
@@ -652,7 +691,7 @@ exports.createAdminOrder = asyncHandler(async (req, res) => {
 
   // Distribute commissions if delivered and at least one real product
   if (status === 'delivered' && orderItems.some(i => i.product)) {
-    await distributeMLMCommission(order);
+    await distributeAllCommissions(order);
   }
 
   res.status(201).json(order);
@@ -661,4 +700,150 @@ exports.createAdminOrder = asyncHandler(async (req, res) => {
 // Get logged in user orders
 exports.getMyOrders = asyncHandler(async (req, res) => {
   // ... existing code ...
-}); 
+});
+
+// Test MLM commission system (Admin only)
+exports.testMLMCommission = async (req, res) => {
+  try {
+    console.log('=== Testing MLM Commission System ===');
+
+    // Clear existing test data
+    await User.deleteMany({ email: { $regex: /^test/ } });
+    await Order.deleteMany({ 'shippingAddress.fullName': { $regex: /^Test/ } });
+    await Earning.deleteMany({ description: { $regex: /Test/ } });
+
+    // Create test users with upline chain
+    const level1 = await User.create({
+      name: 'Test Level 1',
+      email: 'test.level1@example.com',
+      password: 'password123',
+      phone: '1234567890',
+      role: 'user',
+      referralCode: 'TEST001'
+    });
+
+    const level2 = await User.create({
+      name: 'Test Level 2',
+      email: 'test.level2@example.com',
+      password: 'password123',
+      phone: '1234567891',
+      role: 'user',
+      referralCode: 'TEST002',
+      uplineId: level1._id
+    });
+
+    const level3 = await User.create({
+      name: 'Test Level 3',
+      email: 'test.level3@example.com',
+      password: 'password123',
+      phone: '1234567892',
+      role: 'user',
+      referralCode: 'TEST003',
+      uplineId: level2._id
+    });
+
+    const level4 = await User.create({
+      name: 'Test Level 4',
+      email: 'test.level4@example.com',
+      password: 'password123',
+      phone: '1234567893',
+      role: 'user',
+      referralCode: 'TEST004',
+      uplineId: level3._id
+    });
+
+    const level5 = await User.create({
+      name: 'Test Level 5',
+      email: 'test.level5@example.com',
+      password: 'password123',
+      phone: '1234567894',
+      role: 'user',
+      referralCode: 'TEST005',
+      uplineId: level4._id
+    });
+
+    const level6 = await User.create({
+      name: 'Test Level 6',
+      email: 'test.level6@example.com',
+      password: 'password123',
+      phone: '1234567895',
+      role: 'user',
+      referralCode: 'TEST006',
+      uplineId: level5._id
+    });
+
+    // Create a test order
+    const order = await Order.create({
+      user: level6._id,
+      items: [{
+        product: new mongoose.Types.ObjectId(),
+        productName: 'Test Product',
+        productPrice: 1000,
+        productImage: 'test-image.jpg',
+        quantity: 1
+      }],
+      totalAmount: 1000,
+      status: 'delivered',
+      paymentStatus: 'paid',
+      paymentMethod: 'cod',
+      orderType: 'online',
+      shippingAddress: {
+        fullName: 'Test Level 6',
+        addressLine1: 'Test Address',
+        city: 'Test City',
+        state: 'Test State',
+        postalCode: '123456',
+        country: 'India',
+        phone: '1234567895'
+      },
+      billingAddress: {
+        fullName: 'Test Level 6',
+        addressLine1: 'Test Address',
+        city: 'Test City',
+        state: 'Test State',
+        postalCode: '123456',
+        country: 'India',
+        phone: '1234567895'
+      },
+      createdBy: level6._id,
+      commissions: {
+        mlm: [],
+        franchise: {}
+      }
+    });
+
+    // Distribute commissions
+    await distributeAllCommissions(order);
+
+    // Get all earnings for this order
+    const earnings = await Earning.find({ orderId: order._id }).populate('user', 'name email');
+    
+    const results = {
+      orderId: order._id,
+      orderAmount: order.totalAmount,
+      totalEarnings: earnings.length,
+      earnings: earnings.map(e => ({
+        user: e.user.name,
+        email: e.user.email,
+        amount: e.amount,
+        type: e.type,
+        level: e.level
+      })),
+      totalCommission: earnings.reduce((sum, e) => sum + e.amount, 0)
+    };
+
+    res.json({
+      success: true,
+      message: 'MLM Commission test completed successfully',
+      results
+    });
+
+  } catch (error) {
+    console.error('MLM Commission test failed:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'MLM Commission test failed', 
+      error: error.message 
+    });
+  }
+}; 

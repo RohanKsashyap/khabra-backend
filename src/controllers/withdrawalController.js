@@ -97,6 +97,11 @@ exports.updateWithdrawalRequestStatus = asyncHandler(async (req, res, next) => {
       request.status = 'rejected';
       request.adminNotes = 'Insufficient balance at time of approval. Auto-rejected.';
     } else {
+      // Mark all pending earnings as completed
+      await Earning.updateMany(
+        { user: request.user, status: 'pending' },
+        { $set: { status: 'completed' } }
+      );
       // Create a negative earning to represent the withdrawal
       await Earning.create({
         user: request.user,
@@ -106,7 +111,6 @@ exports.updateWithdrawalRequestStatus = asyncHandler(async (req, res, next) => {
         status: 'completed',
         date: new Date(),
       });
-      
       request.status = 'approved';
     }
   } else { // status is 'rejected'

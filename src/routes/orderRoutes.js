@@ -16,6 +16,7 @@ const {
   deleteBulkOrders,
   getAllOrders,
   createAdminOrder,
+  testMLMCommission,
 } = require('../controllers/orderController');
 
 // Admin routes
@@ -37,5 +38,8 @@ router.put('/:id/cancel', protect, cancelOrder);
 router.post('/:id/return', protect, requestReturn);
 router.post('/:id/tracking', protect, admin, addTrackingUpdate);
 router.put('/:id/return-status', protect, admin, updateReturnStatus);
+
+// Test MLM commission system
+router.post('/test-mlm-commission', protect, admin, testMLMCommission);
 
 module.exports = router; 

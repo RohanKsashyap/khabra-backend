@@ -27,8 +27,19 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['user', 'distributor', 'admin', 'franchise_owner'],
+    enum: ['admin', 'franchise_owner', 'distributor', 'user'],
     default: 'user',
+  },
+  // MLM and Franchise fields
+  franchiseId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Franchise',
+    default: null
+  },
+  uplineId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
   },
   referralCode: {
     type: String,
@@ -68,6 +79,21 @@ const userSchema = new mongoose.Schema({
     type: [String],
     default: [],
   },
+  // Franchise owner specific fields
+  franchiseOwner: {
+    totalDownline: {
+      type: Number,
+      default: 0
+    },
+    totalSales: {
+      type: Number,
+      default: 0
+    },
+    commissionEarned: {
+      type: Number,
+      default: 0
+    }
+  }
 }, {
   timestamps: true,
 });
