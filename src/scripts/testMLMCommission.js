@@ -191,6 +191,25 @@ async function testMLMCommission() {
     const earningsAfterDuplicate = await Earning.find({ orderId: order._id });
     console.log(`Earnings after duplicate attempt: ${earningsAfterDuplicate.length} (should be same as before)`);
 
+    // --- Automated Downline Reassignment Test ---
+    console.log('\n6. Testing downline reassignment on user deletion...');
+
+    // Delete Level 5 (level5)
+    await User.findByIdAndDelete(level5._id);
+
+    // Fetch Level 6 again
+    const updatedLevel6 = await User.findById(level6._id);
+    const expectedUplineId = String(level4._id);
+    const actualUplineId = updatedLevel6.uplineId ? String(updatedLevel6.uplineId) : null;
+
+    if (actualUplineId === expectedUplineId) {
+      console.log('✅ Downline reassignment successful: Level 6\'s uplineId is now Level 4.');
+    } else {
+      console.log('❌ Downline reassignment failed:');
+      console.log('  Expected uplineId:', expectedUplineId);
+      console.log('  Actual uplineId:', actualUplineId);
+    }
+
     console.log('\n=== Test Completed Successfully! ===');
 
   } catch (error) {

@@ -6,10 +6,23 @@ const ErrorResponse = require('../utils/errorResponse');
 // @route   GET /api/v1/products
 // @access  Private/Admin
 exports.getProducts = asyncHandler(async (req, res, next) => {
-  const products = await Product.find();
+  const { search, category, page = 1, limit = 12 } = req.query;
+  const query = {};
+  if (search && typeof search === 'string' && search.trim()) {
+    query.name = { $regex: new RegExp(search, 'i') };
+  }
+  if (category && typeof category === 'string' && category.trim()) {
+    query.category = category;
+  }
+  const skip = (parseInt(page) - 1) * parseInt(limit);
+  const products = await Product.find(query).skip(skip).limit(parseInt(limit));
+  const total = await Product.countDocuments(query);
   res.status(200).json({
     success: true,
     count: products.length,
+    total,
+    page: parseInt(page),
+    pages: Math.ceil(total / parseInt(limit)),
     data: products
   });
 });

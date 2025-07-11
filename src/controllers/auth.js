@@ -25,13 +25,29 @@ exports.register = async (req, res) => {
       });
     }
 
+    let uplineId = null;
     let referralChain = [];
-    if (referredBy) {
-      const referrer = await User.findOne({ referralCode: referredBy });
-      if (referrer) {
-        referralChain = [...(referrer.referralChain || []), referrer._id.toString()];
+    let referrer = null;
+
+    if (typeof referredBy === 'string' && referredBy.trim() !== "") {
+      referrer = await User.findOne({ referralCode: referredBy });
+    }
+
+    if (referrer) {
+      uplineId = referrer._id;
+      referralChain = [referrer._id.toString(), ...(referrer.referralChain || [])];
+    } else {
+      // Always fallback to admin if no valid referrer
+      const adminUser = await User.findOne({ role: 'admin' });
+      console.log('Admin user used for fallback:', adminUser ? adminUser._id : null);
+      if (adminUser) {
+        uplineId = adminUser._id;
+        referralChain = [adminUser._id.toString(), ...(adminUser.referralChain || [])];
       }
     }
+    console.log('Registering user:', { name, email, referredBy });
+    console.log('Referrer:', referrer ? referrer._id : null);
+    console.log('Final uplineId:', uplineId);
 
     // Create user
     const user = await User.create({
@@ -40,8 +56,10 @@ exports.register = async (req, res) => {
       password,
       phone,
       referredBy,
+      uplineId,
       referralChain,
     });
+    console.log('User created:', user);
 
     // If user was referred, update referrer's network
     if (referredBy) {

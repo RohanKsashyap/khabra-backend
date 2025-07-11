@@ -28,21 +28,44 @@ exports.createOrder = async (req, res) => {
       paymentMethod,
       paymentDetails,
       totalAmount,
-      franchiseId // Add support for franchise orders
+      franchiseId, // Add support for franchise orders
+      userId, // For registered customer selection
+      guestName, // For walk-in/guest
+      guestPhone // For walk-in/guest
     } = req.body;
 
+    let orderUser = req.user._id;
+    let orderGuestName = undefined;
+    let orderGuestPhone = undefined;
+    let orderType = req.user.role === 'franchise' ? 'offline' : 'online';
+
+    if (req.user.role === 'franchise' && userId) {
+      // Franchise owner selected a registered customer
+      orderUser = userId;
+      orderType = 'offline';
+    } else if (req.user.role === 'franchise' && guestName) {
+      // Franchise owner entered a guest customer
+      orderUser = req.user._id;
+      orderGuestName = guestName;
+      orderGuestPhone = guestPhone;
+      orderType = 'offline';
+    }
+
     const order = new Order({
-      user: req.user._id,
+      user: orderUser,
       items,
       shippingAddress,
       billingAddress,
       paymentMethod,
       paymentDetails,
       totalAmount,
-      status: 'pending',
+      status: req.user.role === 'franchise' ? 'approved' : 'pending',
       paymentStatus: paymentMethod === 'cod' ? 'pending' : 'paid',
       franchise: franchiseId || null, // Set franchise if provided
-      createdBy: req.user._id // Set createdBy to the authenticated user
+      createdBy: req.user._id, // Set createdBy to the authenticated user
+      orderType,
+      guestName: orderGuestName,
+      guestPhone: orderGuestPhone
     });
 
     console.log('Order created with user ID:', order.user);
@@ -66,14 +89,15 @@ exports.createOrder = async (req, res) => {
 
 // Get user's orders (or all orders for admin with filters)
 exports.getUserOrders = asyncHandler(async (req, res) => {
-  const { status, userId } = req.query;
+  const { status, userId, franchiseId } = req.query;
   let query = {};
 
   console.log('Getting orders for user:', {
     requestingUserId: req.user._id,
     requestingUserRole: req.user.role,
     filterUserId: userId,
-    filterStatus: status
+    filterStatus: status,
+    filterFranchiseId: franchiseId
   });
 
   // Regular users can ONLY see their own orders
@@ -83,6 +107,10 @@ exports.getUserOrders = asyncHandler(async (req, res) => {
     // Admin can filter by userId if provided
     if (userId) {
       query.user = userId;
+    }
+    // Admin can filter by franchiseId if provided
+    if (franchiseId) {
+      query.franchise = franchiseId;
     }
   }
 
@@ -106,8 +134,8 @@ exports.getUserOrders = asyncHandler(async (req, res) => {
     console.log('Found orders:', orders.map(order => ({
       orderId: order._id,
       userId: order.user._id,
-      userName: order.user.name,
-      userEmail: order.user.email
+      userName: typeof order.user === 'object' && order.user !== null && 'name' in order.user ? order.user.name : order.user,
+      userEmail: typeof order.user === 'object' && order.user !== null && 'email' in order.user ? order.user.email : undefined
     })));
 
     // Double-check security: Ensure regular users only get their orders
@@ -160,8 +188,8 @@ exports.getOrder = async (req, res) => {
     console.log('Found order:', {
       orderId: order._id,
       userId: order.user._id,
-      userName: order.user.name,
-      userEmail: order.user.email
+      userName: typeof order.user === 'object' && order.user !== null && 'name' in order.user ? order.user.name : order.user,
+      userEmail: typeof order.user === 'object' && order.user !== null && 'email' in order.user ? order.user.email : undefined
     });
 
     res.json(order);

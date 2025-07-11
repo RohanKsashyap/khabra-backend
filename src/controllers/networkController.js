@@ -214,32 +214,29 @@ exports.getNetworkTree = async (req, res) => {
       upline = await User.findOne({ referralCode: rootUser.referredBy }).select('name email referralCode role');
     }
 
-    async function buildLevelTree(referralCode, level, maxLevel) {
+    async function buildLevelTree(userId, level, maxLevel) {
       if (level > maxLevel) return [];
-      const referrals = await User.find({ referredBy: referralCode });
+      // Find users whose uplineId is the current user
+      const referrals = await User.find({ uplineId: userId });
       if (referrals.length === 0) return [];
       
       const tree = [];
       for (const ref of referrals) {
-        const downline = await buildLevelTree(ref.referralCode, level + 1, maxLevel);
-        
+        const downline = await buildLevelTree(ref._id, level + 1, maxLevel);
         // Calculate direct referrals count
-        const directReferrals = await User.countDocuments({ referredBy: ref.referralCode });
-        
+        const directReferrals = await User.countDocuments({ uplineId: ref._id });
         // Calculate total team size (including all levels)
         let teamSize = 0;
-        const calculateTeamSize = async (userRefCode) => {
-          const children = await User.find({ referredBy: userRefCode });
+        const calculateTeamSize = async (userObjId) => {
+          const children = await User.find({ uplineId: userObjId });
           teamSize += children.length;
           for (const child of children) {
-            await calculateTeamSize(child.referralCode);
+            await calculateTeamSize(child._id);
           }
         };
-        await calculateTeamSize(ref.referralCode);
-        
+        await calculateTeamSize(ref._id);
         // Get user's network data for sales information
         const userNetwork = await Network.findOne({ user: ref._id });
-        
         tree.push({
           ...ref.toObject(),
           downline,
@@ -247,13 +244,14 @@ exports.getNetworkTree = async (req, res) => {
           teamSize,
           totalSales: userNetwork?.teamStats?.totalSales || 0,
           monthlySales: userNetwork?.teamStats?.monthlySales || 0,
-          status: 'active', // You can add logic to determine actual status
+          status: 'active',
         });
       }
       return tree;
     }
 
-    const tree = await buildLevelTree(rootUser.referralCode, 1, 5); // 5 levels
+    // Use the admin's _id as the root for the tree if the user is admin
+    const tree = await buildLevelTree(rootUser._id, 1, 5); // 5 levels
     const stats = countLevels(tree);
 
     // Get root user's network data

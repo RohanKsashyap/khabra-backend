@@ -9,6 +9,7 @@ const {
   deleteUser,
   getUserById,
   bulkDeleteUsers,
+  searchUsers,
 } = require('../controllers/userController');
 const { protect, admin } = require('../middleware/authMiddleware');
 
@@ -26,6 +27,9 @@ router.route('/')
 
 // Route for franchise management (doesn't require admin)
 router.get('/franchise-owners', protect, getAllUsers);
+
+// User search (for franchise/admin dashboards)
+router.get('/search', protect, searchUsers);
 
 router.route('/:id')
   .get(protect, admin, getUserById)

@@ -38,6 +38,18 @@ exports.getFranchise = asyncHandler(async (req, res, next) => {
     });
 });
 
+// Helper function to recursively update downline franchiseId
+async function updateDownlineFranchiseId(uplineId, franchiseId) {
+    const downline = await User.find({ uplineId });
+    for (const user of downline) {
+        if (String(user.franchiseId) !== String(franchiseId)) {
+            user.franchiseId = franchiseId;
+            await user.save();
+            await updateDownlineFranchiseId(user._id, franchiseId);
+        }
+    }
+}
+
 // @desc    Create franchise (Admin)
 // @route   POST /api/v1/franchises
 // @access  Private/Admin
@@ -70,6 +82,9 @@ exports.createFranchise = asyncHandler(async (req, res, next) => {
     
     // Update user with franchise ID
     await User.findByIdAndUpdate(ownerId, { franchiseId: franchise._id });
+
+    // Automatically update all downline users to new franchise
+    await updateDownlineFranchiseId(ownerId, franchise._id);
 
     res.status(201).json({
         success: true,
@@ -485,6 +500,39 @@ exports.getFranchiseStatistics = asyncHandler(async (req, res, next) => {
             topFranchises
         }
     });
+});
+
+// @desc    Get franchise downline network tree (Admin/Franchise Owner)
+// @route   GET /api/v1/franchises/:id/network
+// @access  Private/Admin or Franchise Owner
+exports.getFranchiseNetwork = asyncHandler(async (req, res, next) => {
+    const franchiseId = req.params.id;
+    // Only allow access if admin or the franchise owner
+    if (req.user.role !== 'admin' && req.user.role !== 'franchise_owner') {
+        return next(new ErrorResponse('Not authorized to view this network', 403));
+    }
+    // If franchise_owner, ensure they own this franchise
+    if (req.user.role === 'franchise_owner') {
+        const franchise = await Franchise.findById(franchiseId);
+        if (!franchise || String(franchise.ownerId) !== String(req.user._id)) {
+            return next(new ErrorResponse('Not authorized to view this network', 403));
+        }
+    }
+    // Get all users in this franchise
+    const users = await User.find({ franchiseId }).select('_id name email phone role uplineId createdAt');
+    // Build a map for quick lookup
+    const userMap = {};
+    users.forEach(user => { userMap[user._id] = { ...user._doc, children: [] }; });
+    let rootNodes = [];
+    // Build the tree
+    users.forEach(user => {
+        if (user.uplineId && userMap[user.uplineId]) {
+            userMap[user.uplineId].children.push(userMap[user._id]);
+        } else {
+            rootNodes.push(userMap[user._id]);
+        }
+    });
+    res.json({ success: true, data: rootNodes });
 });
 
 module.exports = exports; 

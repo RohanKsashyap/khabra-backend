@@ -174,6 +174,14 @@ const orderSchema = new mongoose.Schema({
     enum: ['online', 'offline'],
     default: 'online'
   },
+  guestName: {
+    type: String,
+    required: false
+  },
+  guestPhone: {
+    type: String,
+    required: false
+  },
   // MLM Commission tracking
   commissions: {
     mlm: [{

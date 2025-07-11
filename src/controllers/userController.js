@@ -2,11 +2,9 @@ const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto'); // Import crypto for token generation
-const { validateRegister, validateLogin } = require('../utils/validators');
 const { sendEmailNotification } = require('../utils/emailService'); // Import the new email function
 const asyncHandler = require('../middleware/asyncHandler');
 const ErrorResponse = require('../utils/errorResponse');
-const { sendTokenResponse } = require('../middleware/auth');
 
 // @desc    Register new user
 // @route   POST /api/users/register
@@ -16,16 +14,28 @@ exports.register = asyncHandler(async (req, res, next) => {
 
   let uplineId = null;
   let referralChain = [];
+  let referrer = null;
 
-  if (referredBy) {
-    // Find the referrer by referral code
-    const referrer = await User.findOne({ referralCode: referredBy });
-    if (referrer) {
-      uplineId = referrer._id;
-      // Build referral chain: [referrer, ...referrer's chain]
-      referralChain = [referrer._id.toString(), ...(referrer.referralChain || [])];
+  if (typeof referredBy === 'string' && referredBy.trim() !== "") {
+    referrer = await User.findOne({ referralCode: referredBy });
+  }
+
+  if (referrer) {
+    uplineId = referrer._id;
+    referralChain = [referrer._id.toString(), ...(referrer.referralChain || [])];
+  } else {
+    // Always fallback to admin if no valid referrer
+    const adminUser = await User.findOne({ role: 'admin' });
+    if (adminUser) {
+      uplineId = adminUser._id;
+      referralChain = [adminUser._id.toString(), ...(adminUser.referralChain || [])];
     }
   }
+  console.log('Registering user:', { name, email, referredBy });
+  console.log('Referrer:', referrer ? referrer._id : null);
+  const adminUser = await User.findOne({ role: 'admin' });
+  console.log('Admin user used for fallback:', adminUser ? adminUser._id : null);
+  console.log('Final uplineId:', uplineId);
 
   const user = await User.create({
     name,
@@ -36,8 +46,21 @@ exports.register = asyncHandler(async (req, res, next) => {
     uplineId,
     referralChain
   });
+  console.log('User created:', user);
 
-  sendTokenResponse(user, 201, res);
+  // Generate JWT token
+  const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRE
+  });
+
+  res.status(201).json({
+    _id: user._id,
+    name: user.name,
+    email: user.email,
+    phone: user.phone,
+    role: user.role,
+    token,
+  });
 });
 
 // @desc    Login user
@@ -62,7 +85,16 @@ exports.login = asyncHandler(async (req, res, next) => {
     return next(new ErrorResponse('Invalid credentials', 401));
   }
 
-  sendTokenResponse(user, 200, res);
+  res.status(200).json({
+    _id: user._id,
+    name: user.name,
+    email: user.email,
+    phone: user.phone,
+    role: user.role,
+    token: jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: process.env.JWT_EXPIRE
+    }),
+  });
 });
 
 // @desc    Get current logged in user
@@ -398,13 +430,22 @@ exports.resetPassword = async (req, res, next) => {
 
 exports.deleteUser = async (req, res) => {
   try {
-    const user = await User.findByIdAndDelete(req.params.id);
-
+    // Find the user to be deleted
+    const user = await User.findById(req.params.id);
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    res.json({ message: 'User removed' });
+    // Reassign downline: set uplineId of all direct downline users to this user's uplineId
+    await User.updateMany(
+      { uplineId: user._id },
+      { $set: { uplineId: user.uplineId } }
+    );
+
+    // Now delete the user
+    await User.findByIdAndDelete(req.params.id);
+
+    res.json({ message: 'User removed and downline reassigned.' });
   } catch (error) {
     res.status(500).json({ message: 'Failed to delete user', error: error.message });
   }
@@ -431,4 +472,22 @@ exports.bulkDeleteUsers = asyncHandler(async (req, res) => {
   }
 
   res.json({ message: `${result.deletedCount} users deleted successfully.` });
+}); 
+
+// @desc    Search users by name or email
+// @route   GET /api/users/search?search=term
+// @access  Private (franchise, admin, etc.)
+exports.searchUsers = asyncHandler(async (req, res) => {
+  const { search } = req.query;
+  if (!search || typeof search !== 'string' || !search.trim()) {
+    return res.json([]);
+  }
+  const regex = new RegExp(search, 'i');
+  const users = await User.find({
+    $or: [
+      { name: { $regex: regex } },
+      { email: { $regex: regex } }
+    ]
+  }).select('-password -resetPasswordToken -resetPasswordExpire');
+  res.json(users);
 }); 

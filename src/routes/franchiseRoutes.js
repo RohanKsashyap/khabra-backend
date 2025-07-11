@@ -12,7 +12,8 @@ const {
     getMyFranchiseSales,
     createFranchiseOrder,
     addDownlineMember,
-    getFranchiseStatistics
+    getFranchiseStatistics,
+    getFranchiseNetwork
 } = require('../controllers/franchiseController');
 
 const { protect, authorize } = require('../middleware/auth');
@@ -39,5 +40,8 @@ router.post('/downline', protect, requireRole('franchise_owner'), addDownlineMem
 
 // Single franchise route (accessible by admin and franchise owner)
 router.get('/:id', protect, getFranchise);
+
+// Network visualization route (admin or franchise owner)
+router.get('/:id/network', protect, requireRole(['admin', 'franchise_owner']), getFranchiseNetwork);
 
 module.exports = router; 
