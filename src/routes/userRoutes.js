@@ -10,6 +10,7 @@ const {
   getUserById,
   bulkDeleteUsers,
   searchUsers,
+  getAdminClients,
 } = require('../controllers/userController');
 const { protect, admin } = require('../middleware/authMiddleware');
 
@@ -24,6 +25,9 @@ router.get('/me', protect, getMe);
 router.route('/')
   .get(protect, admin, getAllUsers)
   .delete(protect, admin, bulkDeleteUsers);
+
+// Admin client management
+router.get('/admin/clients', protect, admin, getAdminClients);
 
 // Route for franchise management (doesn't require admin)
 router.get('/franchise-owners', protect, getAllUsers);

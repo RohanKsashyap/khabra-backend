@@ -313,6 +313,42 @@ exports.getUsers = async (req, res) => {
   }
 };
 
+// @desc    Get all clients for admin management
+// @route   GET /api/users/admin/clients
+// @access  Private/Admin
+exports.getAdminClients = asyncHandler(async (req, res, next) => {
+    const users = await User.find({
+        role: { $in: ['user', 'distributor', 'franchise_owner'] }
+    })
+    .populate('franchiseId', 'name district')
+    .populate('uplineId', 'name email')
+    .sort({ createdAt: -1 });
+
+    // Calculate additional stats for each user
+    const usersWithStats = await Promise.all(users.map(async (user) => {
+        const userObj = user.toObject();
+        
+        // Get order statistics
+        const Order = require('../models/Order');
+        const orders = await Order.find({ user: user._id });
+        const totalOrders = orders.length;
+        const totalSpent = orders.reduce((sum, order) => sum + order.totalAmount, 0);
+        
+        return {
+            ...userObj,
+            totalOrders,
+            totalSpent,
+            status: user.status || 'active' // Default to active if not set
+        };
+    }));
+    
+    res.status(200).json({
+        success: true,
+        count: usersWithStats.length,
+        data: usersWithStats
+    });
+});
+
 exports.updateUser = async (req, res) => {
   try {
     const user = await User.findByIdAndUpdate(req.params.id, req.body, {
