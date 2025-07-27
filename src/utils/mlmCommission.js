@@ -266,7 +266,7 @@ async function updateDownlineCount(uplineId) {
 
     // If upline is a franchise owner, update franchise downline count
     const uplineUser = await User.findById(uplineId);
-    if (uplineUser && uplineUser.role === 'franchise_owner' && uplineUser.franchiseId) {
+    if (uplineUser && uplineUser.role === 'franchise' && uplineUser.franchiseId) {
       await Franchise.findByIdAndUpdate(uplineUser.franchiseId, {
         totalDownline: downlineCount
       });

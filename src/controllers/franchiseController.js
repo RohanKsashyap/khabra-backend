@@ -76,9 +76,9 @@ exports.createFranchise = asyncHandler(async (req, res, next) => {
         return next(new ErrorResponse('User already has a franchise', 400));
     }
 
-    // Update user role to franchise_owner
+    // Update user role to franchise
     await User.findByIdAndUpdate(ownerId, { 
-        role: 'franchise_owner',
+        role: 'franchise',
         franchiseId: null // Will be set after franchise creation
     });
 
@@ -189,7 +189,7 @@ exports.getAllFranchisesOverview = asyncHandler(async (req, res, next) => {
         // Get downline count
         const downlineCount = await User.countDocuments({ 
             franchiseId: franchise._id,
-            role: { $in: ['distributor', 'user'] }
+            role: { $in: ['user', 'franchise', 'admin'] }
         });
 
         // Get recent orders
@@ -237,7 +237,7 @@ exports.getFranchiseDetails = asyncHandler(async (req, res, next) => {
     // Get downline members
     const downlineMembers = await User.find({ 
         franchiseId: franchise._id,
-        role: { $in: ['distributor', 'user'] }
+        role: { $in: ['user', 'franchise', 'admin'] }
     }).select('name email phone role createdAt');
 
     // Calculate statistics
@@ -301,7 +301,7 @@ exports.getMyFranchiseSales = asyncHandler(async (req, res, next) => {
     // Get downline members
     const downlineMembers = await User.find({ 
         franchiseId: franchise._id,
-        role: { $in: ['distributor', 'user'] }
+        role: { $in: ['user', 'franchise', 'admin'] }
     }).select('name email phone role createdAt');
 
     res.json({
@@ -404,7 +404,7 @@ exports.addDownlineMember = asyncHandler(async (req, res, next) => {
         name,
         email,
         phone,
-        role = 'distributor',
+        role = 'user',
         uplineId
     } = req.body;
 
@@ -485,7 +485,7 @@ exports.getFranchiseStatistics = asyncHandler(async (req, res, next) => {
     ]);
 
     const totalDownline = await User.countDocuments({
-        role: { $in: ['distributor', 'user'] },
+        role: { $in: ['user', 'franchise', 'admin'] },
         franchiseId: { $exists: true, $ne: null }
     });
 
@@ -512,11 +512,11 @@ exports.getFranchiseStatistics = asyncHandler(async (req, res, next) => {
 exports.getFranchiseNetwork = asyncHandler(async (req, res, next) => {
     const franchiseId = req.params.id;
     // Only allow access if admin or the franchise owner
-    if (req.user.role !== 'admin' && req.user.role !== 'franchise_owner') {
+    if (req.user.role !== 'admin' && req.user.role !== 'franchise') {
         return next(new ErrorResponse('Not authorized to view this network', 403));
     }
-    // If franchise_owner, ensure they own this franchise
-    if (req.user.role === 'franchise_owner') {
+    // If franchise, ensure they own this franchise
+    if (req.user.role === 'franchise') {
         const franchise = await Franchise.findById(franchiseId);
         if (!franchise || String(franchise.ownerId) !== String(req.user._id)) {
             return next(new ErrorResponse('Not authorized to view this network', 403));

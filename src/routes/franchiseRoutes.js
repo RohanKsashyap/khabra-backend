@@ -37,14 +37,14 @@ router.get('/admin/statistics', protect, requireRole('admin'), getFranchiseStati
 router.get('/:id/details', protect, requireRole('admin'), getFranchiseDetails);
 
 // Franchise owner routes
-router.get('/my/sales', protect, requireRole('franchise_owner'), getMyFranchiseSales);
-router.post('/orders', protect, requireRole('franchise_owner'), createFranchiseOrder);
-router.post('/downline', protect, requireRole('franchise_owner'), addDownlineMember);
+router.get('/my/sales', protect, requireRole('franchise'), getMyFranchiseSales);
+router.post('/orders', protect, requireRole('franchise'), createFranchiseOrder);
+router.post('/downline', protect, requireRole('franchise'), addDownlineMember);
 
 // Single franchise route (accessible by admin and franchise owner)
 router.get('/:id', getFranchise);
 
 // Network visualization route (admin or franchise owner)
-router.get('/:id/network', protect, requireRole(['admin', 'franchise_owner']), getFranchiseNetwork);
+router.get('/:id/network', protect, requireRole(['admin', 'franchise']), getFranchiseNetwork);
 
 module.exports = router; 

@@ -41,6 +41,12 @@ const productSchema = new mongoose.Schema({
     type: Boolean,
     default: true,
   },
+  franchiseId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Franchise',
+    default: null,
+    index: true,
+  },
   ratings: [{
     user: {
       type: mongoose.Schema.Types.ObjectId,

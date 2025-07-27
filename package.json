@@ -1,12 +1,13 @@
 {
-  "name": "khabra-mlm-backend",
+  "name": "mlm-ecommerce-backend",
   "version": "1.0.0",
   "description": "Backend for Khabra MLM system",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon .backend/server.js",
-    "init-db": "node src/scripts/initDb.js"
+    "dev": "nodemon src/server.js",
+    "test": "jest",
+    "clean:ranks": "node src/scripts/cleanRankData.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
