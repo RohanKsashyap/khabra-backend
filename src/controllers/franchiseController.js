@@ -10,15 +10,19 @@ const mongoose = require('mongoose');
 // @route   GET /api/v1/franchises
 // @access  Private/Admin
 exports.getFranchises = asyncHandler(async (req, res, next) => {
-    const franchises = await Franchise.find()
-        .populate('ownerId', 'name email phone')
-        .sort({ createdAt: -1 });
-    
-    res.status(200).json({
-        success: true,
-        count: franchises.length,
-        data: franchises
-    });
+    try {
+        const franchises = await Franchise.find({ status: 'active' })
+            .populate('ownerId', 'name email phone')
+            .sort({ createdAt: -1 });
+        res.status(200).json({
+            success: true,
+            count: franchises.length,
+            data: franchises
+        });
+    } catch (error) {
+        console.error('Error in getFranchises:', error);
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    }
 });
 
 // @desc    Get single franchise

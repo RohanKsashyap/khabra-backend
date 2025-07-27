@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const Stock = require('./Stock');
 
 const productSchema = new mongoose.Schema({
   name: {
@@ -64,6 +65,48 @@ const productSchema = new mongoose.Schema({
   },
 }, {
   timestamps: true,
+  methods: {
+    /**
+     * Check stock availability for a specific franchise
+     * @param {string} franchiseId - ID of the franchise
+     * @param {number} quantity - Quantity to check
+     * @returns {Promise<boolean>} - Whether the requested quantity is available
+     */
+    async checkStockAvailability(franchiseId, quantity) {
+      const stock = await Stock.findOne({ 
+        product: this._id, 
+        franchise: franchiseId 
+      });
+
+      if (!stock) {
+        return false; // No stock found for this product and franchise
+      }
+
+      return stock.currentQuantity >= quantity;
+    },
+
+    /**
+     * Get stock information for a specific franchise
+     * @param {string} franchiseId - ID of the franchise
+     * @returns {Promise<Object|null>} - Stock information or null
+     */
+    async getStockInfo(franchiseId) {
+      return await Stock.findOne({ 
+        product: this._id, 
+        franchise: franchiseId 
+      }).select('currentQuantity minimumThreshold maximumCapacity status');
+    },
+
+    /**
+     * Get stock information across all franchises
+     * @returns {Promise<Array>} - Array of stock information
+     */
+    async getAllStockInfo() {
+      return await Stock.find({ 
+        product: this._id 
+      }).populate('franchise', 'name');
+    }
+  }
 });
 
 // Calculate average rating before saving
@@ -74,4 +117,28 @@ productSchema.pre('save', function(next) {
   next();
 });
 
-module.exports = mongoose.model('Product', productSchema); 
+// Add a pre-save hook to ensure stock is created for new products
+productSchema.pre('save', async function(next) {
+  // If this is a new product, create default stock entries for existing franchises
+  if (this.isNew) {
+    try {
+      const Franchise = mongoose.model('Franchise');
+      const franchises = await Franchise.find({});
+
+      const stockEntries = franchises.map(franchise => ({
+        product: this._id,
+        franchise: franchise._id,
+        currentQuantity: this.stock || 0, // Use product's stock value
+        minimumThreshold: 10,
+        maximumCapacity: Math.max(1000, (this.stock || 0) * 2) // Ensure capacity is at least double the initial stock
+      }));
+
+      await Stock.insertMany(stockEntries);
+    } catch (error) {
+      console.error('Error creating default stock entries:', error);
+    }
+  }
+  next();
+});
+
+module.exports = mongoose.model('Product', productSchema);

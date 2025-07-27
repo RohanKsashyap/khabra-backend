@@ -1,97 +1,146 @@
 const Product = require('../models/Product');
+const Stock = require('../models/Stock');
+const asyncHandler = require('../middleware/asyncHandler');
+const ErrorResponse = require('../utils/errorResponse');
 
-// @desc    Get all products
-// @route   GET /api/products
-// @access  Public
-exports.getProducts = async (req, res) => {
-  try {
-    const { category, search, sort } = req.query;
-    let query = { isActive: true };
+class ProductController {
+  /**
+   * Get all products with stock information
+   */
+  getProducts = asyncHandler(async (req, res) => {
+    const { 
+      franchiseId, 
+      category, 
+      search, 
+      page = 1, 
+      limit = 10 
+    } = req.query;
 
-    // Filter by category
-    if (category) {
-      query.category = category;
-    }
-
-    // Search by name
+    // Build query
+    const query = {};
+    if (category) query.category = category;
     if (search) {
-      query.name = { $regex: search, $options: 'i' };
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } }
+      ];
     }
 
-    // Build sort object
-    let sortObj = {};
-    if (sort) {
-      const [field, order] = sort.split(':');
-      sortObj[field] = order === 'desc' ? -1 : 1;
+    // Pagination
+    const pageNumber = parseInt(page);
+    const limitNumber = parseInt(limit);
+    const skip = (pageNumber - 1) * limitNumber;
+
+    // Find products
+    const products = await Product.find(query)
+      .skip(skip)
+      .limit(limitNumber)
+      .lean(); // Use lean for better performance
+
+    // Attach stock information if franchiseId is provided
+    if (franchiseId) {
+      const productsWithStock = await Promise.all(
+        products.map(async (product) => {
+          const stock = await Stock.findOne({ 
+            product: product._id, 
+            franchise: franchiseId 
+          }).select('currentQuantity minimumThreshold maximumCapacity status');
+
+          return {
+            ...product,
+            stock: stock || {
+              currentQuantity: 0,
+              minimumThreshold: 0,
+              maximumCapacity: 0,
+              status: 'OUT_OF_STOCK'
+            }
+          };
+        })
+      );
+
+      // Count total products for pagination
+      const total = await Product.countDocuments(query);
+
+      res.status(200).json({
+        success: true,
+        count: productsWithStock.length,
+        pagination: {
+          currentPage: pageNumber,
+          totalPages: Math.ceil(total / limitNumber),
+          total
+        },
+        data: productsWithStock
+      });
     } else {
-      sortObj = { createdAt: -1 };
-    }
+      // If no franchiseId, return products without stock info
+      const total = await Product.countDocuments(query);
 
-    const products = await Product.find(query).sort(sortObj);
-
-    res.status(200).json({
-      success: true,
-      count: products.length,
-      data: products,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
-};
-
-// @desc    Get single product
-// @route   GET /api/products/:id
-// @access  Public
-exports.getProduct = async (req, res) => {
-  try {
-    const product = await Product.findById(req.params.id);
-
-    if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found',
+      res.status(200).json({
+        success: true,
+        count: products.length,
+        pagination: {
+          currentPage: pageNumber,
+          totalPages: Math.ceil(total / limitNumber),
+          total
+        },
+        data: products
       });
     }
+  });
+
+  /**
+   * Get single product with stock information
+   */
+  getProduct = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { franchiseId } = req.query;
+
+    // Find product
+    const product = await Product.findById(id);
+    if (!product) {
+      throw new ErrorResponse('Product not found', 404);
+    }
+
+    // If franchiseId is provided, get stock information
+    let stockInfo = null;
+    if (franchiseId) {
+      stockInfo = await Stock.findOne({ 
+        product: id, 
+        franchise: franchiseId 
+      }).select('currentQuantity minimumThreshold maximumCapacity status');
+    }
+
+    // Convert product to plain object and add stock info
+    const productObject = product.toObject();
+    productObject.stock = stockInfo || {
+      currentQuantity: 0,
+      minimumThreshold: 0,
+      maximumCapacity: 0,
+      status: 'OUT_OF_STOCK'
+    };
 
     res.status(200).json({
       success: true,
-      data: product,
+      data: productObject
     });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
-};
+  });
 
-// @desc    Create new product
-// @route   POST /api/products
-// @access  Private/Admin
-exports.createProduct = async (req, res) => {
-  try {
+  /**
+   * Create new product
+   */
+  createProduct = asyncHandler(async (req, res) => {
     const product = await Product.create(req.body);
 
     res.status(201).json({
       success: true,
       data: product,
     });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
-};
+  });
 
-// @desc    Update product
-// @route   PUT /api/products/:id
-// @access  Private/Admin
-exports.updateProduct = async (req, res) => {
-  try {
+  /**
+   * Update product
+   */
+  updateProduct = asyncHandler(async (req, res) => {
     let product = await Product.findById(req.params.id);
 
     if (!product) {
@@ -110,19 +159,12 @@ exports.updateProduct = async (req, res) => {
       success: true,
       data: product,
     });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
-};
+  });
 
-// @desc    Delete product
-// @route   DELETE /api/products/:id
-// @access  Private/Admin
-exports.deleteProduct = async (req, res) => {
-  try {
+  /**
+   * Delete product
+   */
+  deleteProduct = asyncHandler(async (req, res) => {
     const product = await Product.findById(req.params.id);
 
     if (!product) {
@@ -138,19 +180,12 @@ exports.deleteProduct = async (req, res) => {
       success: true,
       data: {},
     });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
-};
+  });
 
-// @desc    Add product review
-// @route   POST /api/products/:id/reviews
-// @access  Private
-exports.addProductReview = async (req, res) => {
-  try {
+  /**
+   * Add product review
+   */
+  addProductReview = asyncHandler(async (req, res) => {
     const { rating, review } = req.body;
 
     const product = await Product.findById(req.params.id);
@@ -187,10 +222,7 @@ exports.addProductReview = async (req, res) => {
       success: true,
       message: 'Review added',
     });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
-}; 
+  });
+}
+
+module.exports = new ProductController(); 

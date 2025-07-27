@@ -190,18 +190,22 @@ exports.updateNetworkPerformance = async (req, res) => {
   }
 };
 
-// Get user's downline tree up to 5 levels
+// Get user's downline tree with infinite levels (admin) or up to 5 levels (regular users)
 exports.getNetworkTree = async (req, res) => {
   try {
     let rootUser;
+    let isAdmin = false;
+    
     if (req.params.userId) {
       // Only admin can view any user's tree
       if (!req.user || req.user.role !== 'admin') {
         return res.status(403).json({ message: 'Access denied' });
       }
+      isAdmin = true;
       rootUser = await User.findById(req.params.userId);
     } else {
       rootUser = await User.findById(req.user._id);
+      isAdmin = req.user.role === 'admin';
     }
 
     if (!rootUser) {
@@ -215,7 +219,10 @@ exports.getNetworkTree = async (req, res) => {
     }
 
     async function buildLevelTree(userId, level, maxLevel) {
-      if (level > maxLevel) return [];
+      // For admin, allow infinite levels (no limit)
+      // For regular users, limit to 5 levels
+      if (!isAdmin && level > maxLevel) return [];
+      
       // Find users whose uplineId is the current user
       const referrals = await User.find({ uplineId: userId });
       if (referrals.length === 0) return [];
@@ -250,8 +257,10 @@ exports.getNetworkTree = async (req, res) => {
       return tree;
     }
 
-    // Use the admin's _id as the root for the tree if the user is admin
-    const tree = await buildLevelTree(rootUser._id, 1, 5); // 5 levels
+    // For admin, use a very high number to effectively remove the limit
+    // For regular users, keep the 5-level limit
+    const maxLevels = isAdmin ? 1000 : 5;
+    const tree = await buildLevelTree(rootUser._id, 1, maxLevels);
     const stats = countLevels(tree);
 
     // Get root user's network data
@@ -325,12 +334,16 @@ exports.getDownlineAnalytics = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Get all downline members up to 5 levels
+    // Check if user is admin to determine level limit
+    const isAdmin = req.user.role === 'admin';
+    const maxLevels = isAdmin ? 1000 : 5; // Infinite for admin, 5 for regular users
+
+    // Get all downline members up to maxLevels
     const allDownline = [];
     const processedUsers = new Set();
 
     const collectDownline = async (referralCode, level) => {
-      if (level > 5) return;
+      if (!isAdmin && level > maxLevels) return;
       
       const referrals = await User.find({ referredBy: referralCode });
       for (const ref of referrals) {
