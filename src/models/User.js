@@ -27,7 +27,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['admin', 'franchise_owner', 'distributor', 'user'],
+    enum: ['admin', 'franchise', 'user'],
     default: 'user',
   },
   // MLM and Franchise fields

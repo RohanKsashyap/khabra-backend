@@ -10,7 +10,14 @@ const rankSchema = new mongoose.Schema({
   level: {
     type: Number,
     required: true,
-    unique: true
+    unique: true,
+    validate: {
+      validator: function(v) {
+        // Ensure level is a valid number and not NaN
+        return !isNaN(v) && isFinite(v) && v >= 0;
+      },
+      message: props => `${props.value} is not a valid level number!`
+    }
   },
   requirements: {
     directReferrals: {
@@ -67,6 +74,20 @@ const rankSchema = new mongoose.Schema({
 
 // Ensure level is unique
 rankSchema.index({ level: 1 }, { unique: true });
+
+// Pre-save hook to log and validate level
+rankSchema.pre('save', function(next) {
+  // Ensure level is converted to a number
+  if (this.level !== undefined) {
+    const numLevel = Number(this.level);
+    if (isNaN(numLevel)) {
+      console.error(`Invalid level value: ${this.level}`);
+      return next(new Error(`Invalid level value: ${this.level}`));
+    }
+    this.level = numLevel;
+  }
+  next();
+});
 
 const Rank = mongoose.model('Rank', rankSchema);
 

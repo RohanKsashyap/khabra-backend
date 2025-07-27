@@ -318,7 +318,7 @@ exports.getUsers = async (req, res) => {
 // @access  Private/Admin
 exports.getAdminClients = asyncHandler(async (req, res, next) => {
     const users = await User.find({
-        role: { $in: ['user', 'distributor', 'franchise_owner'] }
+        role: { $in: ['user', 'franchise', 'admin'] }
     })
     .populate('franchiseId', 'name district')
     .populate('uplineId', 'name email')

@@ -42,4 +42,18 @@ async function fixUplineIds() {
   }
 }
 
+// Utility: Update all users with role 'franchise_owner' to 'franchise'
+async function fixFranchiseOwnerRoles() {
+  const User = require('../models/User');
+  const result = await User.updateMany(
+    { role: 'franchise_owner' },
+    { $set: { role: 'franchise' } }
+  );
+  console.log(`Updated ${result.modifiedCount} users from 'franchise_owner' to 'franchise'.`);
+}
+
+if (require.main === module) {
+  fixFranchiseOwnerRoles().then(() => process.exit(0));
+}
+
 fixUplineIds(); 
