@@ -110,14 +110,9 @@ exports.getAdminDashboardOverview = asyncHandler(async (req, res, next) => {
             $cond: [{ $eq: ['$status', 'inactive'] }, 1, 0]
           }
         },
-        distributors: {
+        franchises: {
           $sum: {
-            $cond: [{ $eq: ['$role', 'distributor'] }, 1, 0]
-          }
-        },
-        franchiseOwners: {
-          $sum: {
-            $cond: [{ $eq: ['$role', 'franchise_owner'] }, 1, 0]
+            $cond: [{ $eq: ['$role', 'franchise'] }, 1, 0]
           }
         },
         customers: {
@@ -133,8 +128,7 @@ exports.getAdminDashboardOverview = asyncHandler(async (req, res, next) => {
     totalUsers: 0,
     activeUsers: 0,
     inactiveUsers: 0,
-    distributors: 0,
-    franchiseOwners: 0,
+    franchises: 0,
     customers: 0
   };
 
@@ -268,8 +262,7 @@ exports.getAdminDashboardOverview = asyncHandler(async (req, res, next) => {
         totalUsers: userData.totalUsers,
         activeUsers: userData.activeUsers,
         inactiveUsers: userData.inactiveUsers,
-        distributors: userData.distributors,
-        franchiseOwners: userData.franchiseOwners,
+        franchises: userData.franchises,
         customers: userData.customers
       },
       franchises: {

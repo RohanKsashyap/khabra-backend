@@ -7,7 +7,11 @@ const asyncHandler = require('../middleware/asyncHandler');
 class ProductController {
   // Get all products
   getAllProducts = asyncHandler(async (req, res) => {
-    const products = await Product.find({});
+    let query = {};
+    if (req.user && req.user.role === 'franchise') {
+      query.franchiseId = req.user.franchiseId;
+    }
+    const products = await Product.find(query);
     res.status(200).json({
       success: true,
       data: products
@@ -24,7 +28,12 @@ class ProductController {
         error: 'Product not found'
       });
     }
-
+    if (req.user && req.user.role === 'franchise' && String(product.franchiseId) !== String(req.user.franchiseId)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden'
+      });
+    }
     res.status(200).json({
       success: true,
       data: product
@@ -120,7 +129,32 @@ class ProductController {
 
   // Create a new product
   createProduct = asyncHandler(async (req, res) => {
-    const product = await Product.create(req.body);
+    let productData = { ...req.body };
+    if (req.user && req.user.role === 'franchise') {
+      productData.franchiseId = req.user.franchiseId;
+    }
+    const product = await Product.create(productData);
+    // Only create stock for this franchise if franchise user
+    if (req.user && req.user.role === 'franchise') {
+      await Stock.create({
+        product: product._id,
+        franchise: req.user.franchiseId,
+        currentQuantity: req.body.stock || 0,
+        minimumThreshold: 10,
+        maximumCapacity: Math.max(1000, (req.body.stock || 0) * 2)
+      });
+    } else {
+      // Admin: create stock for all franchises
+      const franchises = await Franchise.find({});
+      const stockEntries = franchises.map(franchise => ({
+        product: product._id,
+        franchise: franchise._id,
+        currentQuantity: req.body.stock || 0,
+        minimumThreshold: 10,
+        maximumCapacity: Math.max(1000, (req.body.stock || 0) * 2)
+      }));
+      await Stock.insertMany(stockEntries);
+    }
     res.status(201).json({
       success: true,
       data: product
@@ -129,18 +163,23 @@ class ProductController {
 
   // Update a product
   updateProduct = asyncHandler(async (req, res) => {
-    const product = await Product.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true
-    });
-
+    let product = await Product.findById(req.params.id);
     if (!product) {
       return res.status(404).json({
         success: false,
         error: 'Product not found'
       });
     }
-
+    if (req.user && req.user.role === 'franchise' && String(product.franchiseId) !== String(req.user.franchiseId)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden'
+      });
+    }
+    product = await Product.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true
+    });
     res.status(200).json({
       success: true,
       data: product
@@ -149,15 +188,20 @@ class ProductController {
 
   // Delete a product
   deleteProduct = asyncHandler(async (req, res) => {
-    const product = await Product.findByIdAndDelete(req.params.id);
-
+    const product = await Product.findById(req.params.id);
     if (!product) {
       return res.status(404).json({
         success: false,
         error: 'Product not found'
       });
     }
-
+    if (req.user && req.user.role === 'franchise' && String(product.franchiseId) !== String(req.user.franchiseId)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden'
+      });
+    }
+    await Product.findByIdAndDelete(req.params.id);
     res.status(200).json({
       success: true,
       data: {}
