@@ -82,6 +82,10 @@ const franchiseSchema = new mongoose.Schema({
     totalCommission: {
         type: Number,
         default: 0
+    },
+    isDefault: {
+        type: Boolean,
+        default: false
     }
 }, {
     timestamps: true

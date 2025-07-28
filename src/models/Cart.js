@@ -11,7 +11,8 @@ const CartItemSchema = new mongoose.Schema({
   franchise: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Franchise',
-    required: true
+    required: false,
+    default: null
   },
   quantity: {
     type: Number,
@@ -52,7 +53,8 @@ const CartSchema = new mongoose.Schema({
   franchise: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Franchise',
-    required: true
+    required: false,
+    default: null
   },
   items: [CartItemSchema],
   createdAt: {
@@ -69,6 +71,11 @@ const CartSchema = new mongoose.Schema({
     async validateCartItems() {
       const validationErrors = [];
 
+      // Skip validation if no franchise is set
+      if (!this.franchise) {
+        return validationErrors;
+      }
+
       for (const item of this.items) {
         const product = await Product.findById(item.product);
         if (!product) {
@@ -79,13 +86,18 @@ const CartSchema = new mongoose.Schema({
           continue;
         }
 
+        // Skip stock validation if item doesn't have franchise set
+        if (!item.franchise) {
+          continue;
+        }
+
         const isAvailable = await product.checkStockAvailability(
-          this.franchise, 
+          item.franchise, 
           item.quantity
         );
 
         if (!isAvailable) {
-          const stockInfo = await product.getStockInfo(this.franchise);
+          const stockInfo = await product.getStockInfo(item.franchise);
           validationErrors.push({
             productId: item.product,
             error: `Insufficient stock. Available: ${stockInfo ? stockInfo.currentQuantity : 0}`
@@ -126,14 +138,12 @@ const CartSchema = new mongoose.Schema({
 
 // Pre-save hook to validate cart items
 CartSchema.pre('save', async function(next) {
-  // Check if cart has a valid franchise reference
-  if (!this.franchise) {
-    return next(new Error('Cart must have a valid franchise reference'));
-  }
-
-  // Ensure all items are from the same franchise
-  if (this.items.some(item => !item.franchise || item.franchise.toString() !== this.franchise.toString())) {
-    return next(new Error('All cart items must be from the same franchise'));
+  // Only validate franchise consistency if franchise is set
+  if (this.franchise) {
+    // Ensure all items are from the same franchise
+    if (this.items.some(item => !item.franchise || item.franchise.toString() !== this.franchise.toString())) {
+      return next(new Error('All cart items must be from the same franchise'));
+    }
   }
 
   next();
