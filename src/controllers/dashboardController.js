@@ -8,6 +8,7 @@ const UserRank = require('../models/UserRank');
 const Rank = require('../models/Rank');
 const asyncHandler = require('../middleware/asyncHandler');
 const ErrorResponse = require('../utils/errorResponse');
+const mongoose = require('mongoose');
 
 // @desc    Get comprehensive admin dashboard statistics
 // @route   GET /api/dashboard/admin/overview
@@ -534,3 +535,292 @@ exports.getDashboardOverview = asyncHandler(async (req, res, next) => {
     }
   });
 });
+
+// Get user sales overview with recursive downline tracking (Admin only)
+const getUserSalesOverview = asyncHandler(async (req, res) => {
+  const userId = req.params.userId;
+  const { dateFrom, dateTo, levels = 'all' } = req.query;
+  
+  if (!userId) {
+    return res.status(400).json({
+      success: false,
+      message: 'User ID is required'
+    });
+  }
+
+  // Date filtering setup
+  let dateFilter = {};
+  if (dateFrom || dateTo) {
+    dateFilter.createdAt = {};
+    if (dateFrom) dateFilter.createdAt.$gte = new Date(dateFrom);
+    if (dateTo) dateFilter.createdAt.$lte = new Date(dateTo);
+  }
+
+  // Helper function to get all downline users recursively
+  const getAllDownlineUsers = async (uplineId, maxLevels = null, currentLevel = 1) => {
+    if (maxLevels && currentLevel > maxLevels) return [];
+    
+    const directDownline = await User.find({ uplineId })
+      .select('_id name email role franchise networkLevel uplineId createdAt')
+      .lean();
+    
+    let allDownline = directDownline.map(user => ({ ...user, level: currentLevel }));
+    
+    // Recursively get downline for each direct member
+    for (const user of directDownline) {
+      const nestedDownline = await getAllDownlineUsers(user._id, maxLevels, currentLevel + 1);
+      allDownline = allDownline.concat(nestedDownline);
+    }
+    
+    return allDownline;
+  };
+
+  // Get the target user info
+  const targetUser = await User.findById(userId)
+    .select('name email role franchiseId networkLevel')
+    .populate('franchiseId', 'name')
+    .lean();
+    
+  if (!targetUser) {
+    return res.status(404).json({
+      success: false,
+      message: 'User not found'
+    });
+  }
+
+  // Get all downline users
+  const maxLevels = levels === 'all' ? null : parseInt(levels);
+  const downlineUsers = await getAllDownlineUsers(userId, maxLevels);
+  const allUserIds = [userId, ...downlineUsers.map(u => u._id)];
+
+  // Get personal sales for target user
+  const personalSales = await Order.aggregate([
+    { 
+      $match: { 
+        user: new mongoose.Types.ObjectId(userId),
+        ...dateFilter
+      } 
+    },
+    {
+      $group: {
+        _id: null,
+        totalOrders: { $sum: 1 },
+        totalAmount: { $sum: '$totalAmount' },
+        totalCommission: { $sum: '$commission.total' },
+        avgOrderValue: { $avg: '$totalAmount' },
+        statusBreakdown: {
+          $push: {
+            status: '$status',
+            amount: '$totalAmount'
+          }
+        }
+      }
+    },
+    {
+      $addFields: {
+        statusSummary: {
+          $reduce: {
+            input: '$statusBreakdown',
+            initialValue: {
+              pending: { count: 0, amount: 0 },
+              confirmed: { count: 0, amount: 0 },
+              delivered: { count: 0, amount: 0 },
+              cancelled: { count: 0, amount: 0 }
+            },
+            in: {
+              pending: {
+                count: {
+                  $cond: [
+                    { $eq: ['$$this.status', 'pending'] },
+                    { $add: ['$$value.pending.count', 1] },
+                    '$$value.pending.count'
+                  ]
+                },
+                amount: {
+                  $cond: [
+                    { $eq: ['$$this.status', 'pending'] },
+                    { $add: ['$$value.pending.amount', '$$this.amount'] },
+                    '$$value.pending.amount'
+                  ]
+                }
+              },
+              confirmed: {
+                count: {
+                  $cond: [
+                    { $eq: ['$$this.status', 'confirmed'] },
+                    { $add: ['$$value.confirmed.count', 1] },
+                    '$$value.confirmed.count'
+                  ]
+                },
+                amount: {
+                  $cond: [
+                    { $eq: ['$$this.status', 'confirmed'] },
+                    { $add: ['$$value.confirmed.amount', '$$this.amount'] },
+                    '$$value.confirmed.amount'
+                  ]
+                }
+              },
+              delivered: {
+                count: {
+                  $cond: [
+                    { $eq: ['$$this.status', 'delivered'] },
+                    { $add: ['$$value.delivered.count', 1] },
+                    '$$value.delivered.count'
+                  ]
+                },
+                amount: {
+                  $cond: [
+                    { $eq: ['$$this.status', 'delivered'] },
+                    { $add: ['$$value.delivered.amount', '$$this.amount'] },
+                    '$$value.delivered.amount'
+                  ]
+                }
+              },
+              cancelled: {
+                count: {
+                  $cond: [
+                    { $eq: ['$$this.status', 'cancelled'] },
+                    { $add: ['$$value.cancelled.count', 1] },
+                    '$$value.cancelled.count'
+                  ]
+                },
+                amount: {
+                  $cond: [
+                    { $eq: ['$$this.status', 'cancelled'] },
+                    { $add: ['$$value.cancelled.amount', '$$this.amount'] },
+                    '$$value.cancelled.amount'
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]);
+
+  // Get downline sales summary by level
+  const downlineSales = await Order.aggregate([
+    { 
+      $match: { 
+        user: { $in: downlineUsers.map(u => u._id) },
+        ...dateFilter
+      } 
+    },
+    {
+      $lookup: {
+        from: 'users',
+        localField: 'user',
+        foreignField: '_id',
+        as: 'userInfo'
+      }
+    },
+    { $unwind: '$userInfo' },
+    {
+      $group: {
+        _id: '$user',
+        userName: { $first: '$userInfo.name' },
+        userEmail: { $first: '$userInfo.email' },
+        totalOrders: { $sum: 1 },
+        totalAmount: { $sum: '$totalAmount' },
+        totalCommission: { $sum: '$commission.total' }
+      }
+    }
+  ]);
+
+  // Combine downline users with their sales data
+  const downlineWithSales = downlineUsers.map(user => {
+    const salesData = downlineSales.find(sale => sale._id.toString() === user._id.toString());
+    return {
+      ...user,
+      sales: salesData ? {
+        totalOrders: salesData.totalOrders,
+        totalAmount: salesData.totalAmount,
+        totalCommission: salesData.totalCommission
+      } : {
+        totalOrders: 0,
+        totalAmount: 0,
+        totalCommission: 0
+      }
+    };
+  });
+
+  // Get top performers by sales amount
+  const topPerformers = downlineWithSales
+    .filter(user => user.sales.totalAmount > 0)
+    .sort((a, b) => b.sales.totalAmount - a.sales.totalAmount)
+    .slice(0, 10);
+
+  // Calculate level-wise summary
+  const levelSummary = {};
+  downlineWithSales.forEach(user => {
+    if (!levelSummary[user.level]) {
+      levelSummary[user.level] = {
+        userCount: 0,
+        totalOrders: 0,
+        totalAmount: 0,
+        totalCommission: 0
+      };
+    }
+    levelSummary[user.level].userCount += 1;
+    levelSummary[user.level].totalOrders += user.sales.totalOrders;
+    levelSummary[user.level].totalAmount += user.sales.totalAmount;
+    levelSummary[user.level].totalCommission += user.sales.totalCommission;
+  });
+
+  // Get total network sales (personal + downline)
+  const totalNetworkSales = {
+    totalOrders: (personalSales[0]?.totalOrders || 0) + downlineWithSales.reduce((sum, user) => sum + user.sales.totalOrders, 0),
+    totalAmount: (personalSales[0]?.totalAmount || 0) + downlineWithSales.reduce((sum, user) => sum + user.sales.totalAmount, 0),
+    totalCommission: (personalSales[0]?.totalCommission || 0) + downlineWithSales.reduce((sum, user) => sum + user.sales.totalCommission, 0)
+  };
+
+  // Get recent orders from the network
+  const recentOrders = await Order.find({
+    user: { $in: allUserIds },
+    ...dateFilter
+  })
+  .populate('user', 'name email')
+  .populate('franchise', 'name')
+  .sort({ createdAt: -1 })
+  .limit(20)
+  .lean();
+
+  res.status(200).json({
+    success: true,
+    data: {
+      targetUser: {
+        ...targetUser,
+        personalSales: personalSales[0] || {
+          totalOrders: 0,
+          totalAmount: 0,
+          totalCommission: 0,
+          avgOrderValue: 0,
+          statusSummary: {
+            pending: { count: 0, amount: 0 },
+            confirmed: { count: 0, amount: 0 },
+            delivered: { count: 0, amount: 0 },
+            cancelled: { count: 0, amount: 0 }
+          }
+        }
+      },
+      networkSummary: {
+        totalNetworkSize: downlineUsers.length,
+        maxLevel: Math.max(...downlineUsers.map(u => u.level), 0),
+        totalNetworkSales
+      },
+      levelSummary,
+      topPerformers,
+      downlineDetails: downlineWithSales,
+      recentOrders,
+      filters: {
+        dateFrom: dateFrom || null,
+        dateTo: dateTo || null,
+        levels: levels
+      }
+    }
+  });
+});
+
+// Export the getUserSalesOverview function
+exports.getUserSalesOverview = getUserSalesOverview;

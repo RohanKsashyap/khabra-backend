@@ -73,16 +73,27 @@ const productSchema = new mongoose.Schema({
      * @returns {Promise<boolean>} - Whether the requested quantity is available
      */
     async checkStockAvailability(franchiseId, quantity) {
-      const stock = await Stock.findOne({ 
-        product: this._id, 
-        franchise: franchiseId 
-      });
+      try {
+        if (!franchiseId || !quantity) {
+          console.warn('Missing franchiseId or quantity for stock check');
+          return false;
+        }
 
-      if (!stock) {
-        return false; // No stock found for this product and franchise
+        const stock = await Stock.findOne({ 
+          product: this._id, 
+          franchise: franchiseId 
+        });
+
+        if (!stock) {
+          console.warn('No stock found for product:', this._id, 'franchise:', franchiseId);
+          return false; // No stock found for this product and franchise
+        }
+
+        return stock.currentQuantity >= quantity;
+      } catch (error) {
+        console.error('Error checking stock availability:', error);
+        return false;
       }
-
-      return stock.currentQuantity >= quantity;
     },
 
     /**
@@ -91,10 +102,20 @@ const productSchema = new mongoose.Schema({
      * @returns {Promise<Object|null>} - Stock information or null
      */
     async getStockInfo(franchiseId) {
-      return await Stock.findOne({ 
-        product: this._id, 
-        franchise: franchiseId 
-      }).select('currentQuantity minimumThreshold maximumCapacity status');
+      try {
+        if (!franchiseId) {
+          console.warn('Missing franchiseId for stock info');
+          return null;
+        }
+
+        return await Stock.findOne({ 
+          product: this._id, 
+          franchise: franchiseId 
+        }).select('currentQuantity minimumThreshold maximumCapacity status');
+      } catch (error) {
+        console.error('Error getting stock info:', error);
+        return null;
+      }
     },
 
     /**

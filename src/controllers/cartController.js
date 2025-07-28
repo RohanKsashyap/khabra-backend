@@ -1,260 +1,310 @@
-const mongoose = require('mongoose');
+const asyncHandler = require('../middleware/asyncHandler');
 const Cart = require('../models/Cart');
 const Product = require('../models/Product');
 const Franchise = require('../models/Franchise');
-const Stock = require('../models/Stock');
 const ErrorResponse = require('../utils/errorResponse');
-const asyncHandler = require('../middleware/asyncHandler');
 
-class CartController {
-  /**
-   * Get user's cart
-   */
-  getCart = asyncHandler(async (req, res) => {
-    const cart = await Cart.findOne({ user: req.user._id })
-      .populate('items.product', 'name price image')
-      .populate('items.franchise', 'name');
+// @desc    Get user's cart
+// @route   GET /api/cart
+// @access  Private
+exports.getCart = asyncHandler(async (req, res, next) => {
+  try {
+    let cart = await Cart.findOne({ user: req.user.id })
+      .populate({
+        path: 'items.product',
+        select: 'name price image category commission stock'
+      })
+      .populate({
+        path: 'franchise',
+        select: 'name location'
+      });
 
     if (!cart) {
+      console.warn('No cart found for user:', req.user.id);
+      // If no cart exists, return empty cart
       return res.status(200).json({
         success: true,
-        data: { items: [] }
+        data: {
+          items: [],
+          franchise: null
+        }
       });
     }
+
+    // Check if cart has required franchise reference
+    if (cart && !cart.franchise) {
+      console.error('Cart found but missing franchise reference for user:', req.user.id);
+      // Delete corrupted cart and return empty cart
+      await Cart.deleteOne({ user: req.user.id });
+      return res.status(200).json({
+        success: true,
+        data: {
+          items: [],
+          franchise: null
+        }
+      });
+    }
+
+    // Validate cart items and remove out of stock items
+    await cart.removeOutOfStockItems();
 
     res.status(200).json({
       success: true,
       data: cart
     });
-  });
+  } catch (error) {
+    if (error.name === 'CastError') {
+      console.error('Invalid ID format:', error);
+    } else {
+      console.error('Unexpected get cart error:', error);
+    }
+    return next(new ErrorResponse('Failed to fetch cart', 500));
+  }
+});
 
-  /**
-   * Add item to cart
-   */
-  addToCart = asyncHandler(async (req, res) => {
-    const { 
-      productId, 
-      quantity, 
-      franchiseId 
-    } = req.body;
+// @desc    Add item to cart
+// @route   POST /api/cart/add
+// @access  Private
+exports.addToCart = asyncHandler(async (req, res, next) => {
+  try {
+    const { productId, quantity = 1, franchiseId } = req.body;
 
-    console.log('Add to Cart Request:', { 
-      productId, 
-      quantity, 
-      franchiseId,
-      userId: req.user._id 
-    });
-
-    // Validate input types
-    if (!mongoose.Types.ObjectId.isValid(productId)) {
-      console.error('Invalid product ID:', productId);
-      throw new ErrorResponse('Invalid product ID', 400);
+    if (!productId) {
+      return next(new ErrorResponse('Product ID is required', 400));
     }
 
-    // If no franchise ID is provided, try to get the user's franchise
-    const effectiveFranchiseId = franchiseId || 
-      (req.user.franchise ? req.user.franchise.toString() : null);
-
-    if (!effectiveFranchiseId || !mongoose.Types.ObjectId.isValid(effectiveFranchiseId)) {
-      console.error('Invalid or missing franchise ID:', {
-        providedFranchiseId: franchiseId,
-        userFranchise: req.user.franchise,
-        effectiveFranchiseId
-      });
-      throw new ErrorResponse('Invalid or missing franchise ID', 400);
+    // Determine franchise ID
+    let targetFranchiseId = franchiseId;
+    
+    // If no franchise ID provided, try to get from user
+    if (!targetFranchiseId) {
+      if (req.user.franchiseId) {
+        targetFranchiseId = req.user.franchiseId;
+      } else {
+        // If user has no franchise, try to find a default franchise or create one
+        const defaultFranchise = await Franchise.findOne({ isDefault: true });
+        if (defaultFranchise) {
+          targetFranchiseId = defaultFranchise._id;
+        } else {
+          return next(new ErrorResponse('Invalid or missing franchise ID', 400));
+        }
+      }
     }
 
-    if (!Number.isInteger(quantity) || quantity <= 0) {
-      console.error('Invalid quantity:', {
-        quantity,
-        type: typeof quantity,
-        isInteger: Number.isInteger(quantity)
-      });
-      throw new ErrorResponse('Quantity must be a positive integer', 400);
-    }
-
-    // Find the product
+    // Verify product exists
     const product = await Product.findById(productId);
     if (!product) {
-      console.error('Product not found:', {
-        productId,
-        productType: typeof productId
-      });
-      throw new ErrorResponse('Product not found', 404);
+      return next(new ErrorResponse('Product not found', 404));
     }
 
-    // Find the franchise
-    const franchise = await Franchise.findById(effectiveFranchiseId);
+    // Verify franchise exists
+    const franchise = await Franchise.findById(targetFranchiseId);
     if (!franchise) {
-      console.error('Franchise not found:', {
-        franchiseId: effectiveFranchiseId,
-        franchiseType: typeof effectiveFranchiseId
-      });
-      throw new ErrorResponse('Franchise not found', 404);
+      return next(new ErrorResponse('Franchise not found', 404));
     }
 
     // Check stock availability
-    const stockEntry = await Stock.findOne({ 
-      product: productId, 
-      franchise: effectiveFranchiseId 
-    });
-
-    if (!stockEntry) {
-      console.error('No stock information found:', { 
-        productId, 
-        franchiseId: effectiveFranchiseId,
-        stockEntrySearch: {
-          product: productId,
-          franchise: effectiveFranchiseId
-        }
-      });
-      throw new ErrorResponse('No stock information available for this product and franchise', 404);
-    }
-
-    // Validate stock availability
-    if (stockEntry.currentQuantity < quantity) {
-      console.error('Insufficient stock:', { 
-        currentQuantity: stockEntry.currentQuantity, 
-        requestedQuantity: quantity,
-        stockEntryDetails: stockEntry
-      });
-      throw new ErrorResponse(
-        `Insufficient stock. Available quantity: ${stockEntry.currentQuantity}`, 
+    const isAvailable = await product.checkStockAvailability(targetFranchiseId, quantity);
+    if (!isAvailable) {
+      const stockInfo = await product.getStockInfo(targetFranchiseId);
+      return next(new ErrorResponse(
+        `Insufficient stock. Available: ${stockInfo ? stockInfo.currentQuantity : 0}`, 
         400
-      );
+      ));
     }
 
-    // Find or create cart for the user
-    let cart = await Cart.findOne({ 
-      user: req.user._id, 
-      franchise: effectiveFranchiseId 
-    });
+    // Find or create cart
+    let cart = await Cart.findOne({ user: req.user.id });
 
     if (!cart) {
-      cart = new Cart({ 
-        user: req.user._id,
-        franchise: effectiveFranchiseId,
-        items: []
+      // Create new cart
+      cart = new Cart({
+        user: req.user.id,
+        franchise: targetFranchiseId,
+        items: [{
+          product: productId,
+          franchise: targetFranchiseId,
+          quantity: quantity
+        }]
       });
-    }
-
-    // Check if product already in cart
-    const existingCartItemIndex = cart.items.findIndex(
-      item => 
-        item.product.toString() === productId && 
-        item.franchise.toString() === effectiveFranchiseId
-    );
-
-    if (existingCartItemIndex !== -1) {
-      // Update quantity, checking total stock availability
-      const proposedQuantity = cart.items[existingCartItemIndex].quantity + quantity;
-      
-      if (proposedQuantity > stockEntry.currentQuantity) {
-        console.error('Total requested quantity exceeds stock:', { 
-          currentQuantity: stockEntry.currentQuantity, 
-          proposedQuantity 
-        });
-        throw new ErrorResponse(
-          `Cannot add more items. Total requested exceeds available stock. Available: ${stockEntry.currentQuantity}`, 
-          400
-        );
-      }
-
-      cart.items[existingCartItemIndex].quantity = proposedQuantity;
     } else {
-      // Add new item to cart
-      cart.items.push({
-        product: productId,
-        quantity,
-        franchise: effectiveFranchiseId
-      });
+      // Check if cart is for the same franchise
+      if (cart.franchise.toString() !== targetFranchiseId.toString()) {
+        // Clear cart if switching franchises
+        cart.franchise = targetFranchiseId;
+        cart.items.splice(0, cart.items.length); // Clear existing items
+        cart.items.push({
+          product: productId,
+          franchise: targetFranchiseId,
+          quantity: quantity
+        });
+      } else {
+        // Check if product already exists in cart
+        const existingItemIndex = cart.items.findIndex(
+          item => item.product.toString() === productId.toString()
+        );
+
+        if (existingItemIndex > -1) {
+          // Update quantity
+          const newQuantity = cart.items[existingItemIndex].quantity + quantity;
+          
+          // Check if new quantity is available
+          const isNewQuantityAvailable = await product.checkStockAvailability(targetFranchiseId, newQuantity);
+          if (!isNewQuantityAvailable) {
+            const stockInfo = await product.getStockInfo(targetFranchiseId);
+            return next(new ErrorResponse(
+              `Cannot add ${quantity} more. Maximum available: ${stockInfo ? stockInfo.currentQuantity : 0}`, 
+              400
+            ));
+          }
+          
+          cart.items[existingItemIndex].quantity = newQuantity;
+        } else {
+          // Add new item
+          cart.items.push({
+            product: productId,
+            franchise: targetFranchiseId,
+            quantity: quantity
+          });
+        }
+      }
     }
 
-    // Save cart
     await cart.save();
 
-    // Populate for response
-    await cart.populate([
-      { path: 'items.product', select: 'name price image' },
-      { path: 'items.franchise', select: 'name' }
-    ]);
-
-    console.log('Cart updated successfully:', cart);
+    // Populate cart for response
+    await cart.populate({
+      path: 'items.product',
+      select: 'name price image category commission stock'
+    });
 
     res.status(200).json({
       success: true,
+      message: 'Item added to cart successfully',
       data: cart
     });
-  });
 
-  // Update cart item quantity
-  updateQuantity = asyncHandler(async (req, res, next) => {
+  } catch (error) {
+    console.error('Add to cart error:', error);
+    return next(new ErrorResponse('Failed to add item to cart', 500));
+  }
+});
+
+// @desc    Update item quantity in cart
+// @route   PUT /api/cart/update
+// @access  Private
+exports.updateQuantity = asyncHandler(async (req, res, next) => {
+  try {
     const { productId, quantity } = req.body;
 
-    // Validate product exists
-    const product = await Product.findById(productId);
-    if (!product) {
-      return res.status(404).json({ message: 'Product not found' });
+    if (!productId || !quantity || quantity < 1) {
+      return next(new ErrorResponse('Product ID and valid quantity are required', 400));
     }
 
-    const cart = await Cart.findOne({ user: req.user._id });
+    const cart = await Cart.findOne({ user: req.user.id });
     if (!cart) {
-      return res.status(404).json({ message: 'Cart not found' });
+      return next(new ErrorResponse('Cart not found', 404));
     }
 
-    await cart.updateQuantity(productId, quantity);
-    
-    // Fetch the updated cart
-    const updatedCart = await Cart.findOne({ user: req.user._id });
-    if (!updatedCart) {
-      return res.json({ items: [] });
-    }
-
-    res.json({ items: updatedCart.items });
-  });
-
-  // Remove item from cart
-  removeFromCart = asyncHandler(async (req, res, next) => {
-    const { productId } = req.params;
-
-    const cart = await Cart.findOne({ user: req.user._id });
-    if (!cart) {
-      return res.status(404).json({ message: 'Cart not found' });
-    }
-
-    // Remove the item from the cart
-    cart.items = cart.items.filter(item => 
-      item.product.toString() !== productId.toString()
+    const itemIndex = cart.items.findIndex(
+      item => item.product.toString() === productId.toString()
     );
 
-    // If cart is empty, delete it
-    if (cart.items.length === 0) {
-      await cart.deleteOne();
-      return res.json({ items: [] });
+    if (itemIndex === -1) {
+      return next(new ErrorResponse('Item not found in cart', 404));
     }
 
-    // Save the updated cart
+    // Check stock availability for new quantity
+    const product = await Product.findById(productId);
+    const isAvailable = await product.checkStockAvailability(cart.franchise.toString(), quantity);
+    
+    if (!isAvailable) {
+      const stockInfo = await product.getStockInfo(cart.franchise.toString());
+      return next(new ErrorResponse(
+        `Insufficient stock. Available: ${stockInfo ? stockInfo.currentQuantity : 0}`,
+        400
+      ));
+    }
+
+    cart.items[itemIndex].quantity = quantity;
     await cart.save();
 
-    // Fetch the updated cart to ensure we have the latest data
-    const updatedCart = await Cart.findOne({ user: req.user._id });
-    
-    res.json({ 
-      message: 'Item removed from cart successfully',
-      items: updatedCart ? updatedCart.items : [] 
+    // Populate cart for response
+    await cart.populate({
+      path: 'items.product',
+      select: 'name price image category commission stock'
     });
-  });
 
-  // Clear cart
-  clearCart = asyncHandler(async (req, res, next) => {
-    const cart = await Cart.findOne({ user: req.user._id });
+    res.status(200).json({
+      success: true,
+      message: 'Cart updated successfully',
+      data: cart
+    });
+
+  } catch (error) {
+    console.error('Update cart error:', error);
+    return next(new ErrorResponse('Failed to update cart', 500));
+  }
+});
+
+// @desc    Remove item from cart
+// @route   DELETE /api/cart/remove/:productId
+// @access  Private
+exports.removeFromCart = asyncHandler(async (req, res, next) => {
+  try {
+    const { productId } = req.params;
+
+    const cart = await Cart.findOne({ user: req.user.id });
     if (!cart) {
-      return res.status(404).json({ message: 'Cart not found' });
+      return next(new ErrorResponse('Cart not found', 404));
     }
 
-    await cart.clear();
-    res.json({ message: 'Cart cleared successfully' });
-  }); 
-}
+    const filteredItems = cart.items.filter(
+      item => item.product.toString() !== productId.toString()
+    );
+    cart.items.splice(0, cart.items.length, ...filteredItems);
 
-module.exports = new CartController(); 
+    await cart.save();
+
+    // Populate cart for response
+    await cart.populate({
+      path: 'items.product',
+      select: 'name price image category commission stock'
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Item removed from cart successfully',
+      data: cart
+    });
+
+  } catch (error) {
+    console.error('Remove from cart error:', error);
+    return next(new ErrorResponse('Failed to remove item from cart', 500));
+  }
+});
+
+// @desc    Clear cart
+// @route   DELETE /api/cart/clear
+// @access  Private
+exports.clearCart = asyncHandler(async (req, res, next) => {
+  try {
+    const cart = await Cart.findOne({ user: req.user.id });
+    if (!cart) {
+      return next(new ErrorResponse('Cart not found', 404));
+    }
+
+    cart.items.splice(0, cart.items.length);
+    await cart.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Cart cleared successfully',
+      data: cart
+    });
+
+  } catch (error) {
+    console.error('Clear cart error:', error);
+    return next(new ErrorResponse('Failed to clear cart', 500));
+  }
+});

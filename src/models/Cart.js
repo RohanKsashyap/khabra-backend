@@ -101,24 +101,38 @@ const CartSchema = new mongoose.Schema({
      * @returns {Promise<void>}
      */
     async removeOutOfStockItems() {
-      const validationErrors = await this.validateCartItems();
-      
-      // Remove items with validation errors
-      this.items = this.items.filter(item => 
-        !validationErrors.some(error => 
-          error.productId.toString() === item.product.toString()
-        )
-      );
+      try {
+        const validationErrors = await this.validateCartItems();
+        
+        if (validationErrors.length > 0) {
+          console.log('Found validation errors for cart items:', validationErrors);
+          
+          // Remove items with validation errors
+          this.items = this.items.filter(item => 
+            !validationErrors.some(error => 
+              error.productId.toString() === item.product.toString()
+            )
+          );
 
-      await this.save();
+          await this.save();
+        }
+      } catch (error) {
+        console.error('Error removing out of stock items:', error);
+        // Don't throw error, just log it to prevent cart fetching from failing
+      }
     }
   }
 });
 
 // Pre-save hook to validate cart items
 CartSchema.pre('save', async function(next) {
+  // Check if cart has a valid franchise reference
+  if (!this.franchise) {
+    return next(new Error('Cart must have a valid franchise reference'));
+  }
+
   // Ensure all items are from the same franchise
-  if (this.items.some(item => item.franchise.toString() !== this.franchise.toString())) {
+  if (this.items.some(item => !item.franchise || item.franchise.toString() !== this.franchise.toString())) {
     return next(new Error('All cart items must be from the same franchise'));
   }
 

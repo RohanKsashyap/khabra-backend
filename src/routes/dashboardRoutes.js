@@ -4,7 +4,8 @@ const { protect, authorize } = require('../middleware/auth');
 const {
   getAdminDashboardOverview,
   getRealTimeStats,
-  getDashboardOverview
+  getDashboardOverview,
+  getUserSalesOverview
 } = require('../controllers/dashboardController');
 
 // Get regular user dashboard overview
@@ -16,4 +17,7 @@ router.get('/admin/overview', protect, authorize('admin'), getAdminDashboardOver
 // Get real-time dashboard statistics
 router.get('/admin/realtime', protect, authorize('admin'), getRealTimeStats);
 
-module.exports = router; 
+// Get detailed user sales overview with downline tracking (admin specific)
+router.get('/admin/user-sales/:userId', protect, authorize('admin'), getUserSalesOverview);
+
+module.exports = router;
