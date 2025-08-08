@@ -33,10 +33,7 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 // Set security headers
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" },
-  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" }
-}));
+app.use(helmet());
 
 // Sanitize data
 app.use(mongoSanitize());
