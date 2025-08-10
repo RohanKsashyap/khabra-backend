@@ -75,6 +75,7 @@ const dashboardRoutes = require('./routes/dashboardRoutes');
 const franchiseRoutes = require('./routes/franchiseRoutes');
 const inventoryRoutes = require('./routes/inventoryRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
+const categoryRoutes = require('./routes/categoryRoutes');
 
 // API Routes
 app.use('/api/users', userRoutes);
@@ -95,6 +96,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/v1/franchises', franchiseRoutes);
 app.use('/api/v1/inventory', inventoryRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/categories', categoryRoutes);
 
 // Handle 404 errors
 app.use(notFound);

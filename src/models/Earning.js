@@ -12,7 +12,7 @@ const earningSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['direct', 'level', 'mlm_level', 'franchise', 'rank', 'reward', 'withdrawal'],
+    enum: ['direct', 'level', 'mlm_level', 'self_commission', 'franchise', 'rank', 'reward', 'withdrawal'],
     required: true
   },
   level: {

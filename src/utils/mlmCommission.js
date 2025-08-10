@@ -2,6 +2,7 @@ const User = require('../models/User');
 const Earning = require('../models/Earning');
 const Rank = require('../models/Rank');
 const Franchise = require('../models/Franchise');
+const Product = require('../models/Product');
 
 /**
  * MLM Commission percentages for each level
@@ -155,6 +156,114 @@ async function distributeMLMCommission(order) {
 }
 
 /**
+ * Check if self-commission has already been distributed for this order
+ * @param {string} orderId - The order ID
+ * @returns {boolean} - True if self-commission already distributed
+ */
+async function isSelfCommissionAlreadyDistributed(orderId) {
+  const existingEarnings = await Earning.find({
+    orderId: orderId,
+    type: 'self_commission'
+  });
+  return existingEarnings.length > 0;
+}
+
+/**
+ * Calculate and distribute self-commission to the purchasing user
+ * @param {Object} order - The order document
+ */
+async function distributeSelfCommission(order) {
+  console.log('--- SELF COMMISSION DEBUG ---');
+  console.log('distributeSelfCommission called for order:', order && order._id);
+  
+  if (!order) {
+    console.log('No order object provided');
+    return;
+  }
+
+  // Check if self-commission has already been distributed for this order
+  if (await isSelfCommissionAlreadyDistributed(order._id)) {
+    console.log('Self-commission already distributed for order:', order._id);
+    return;
+  }
+
+  // Get the purchasing user
+  const purchasingUser = await User.findById(order.user);
+  if (!purchasingUser) {
+    console.log('No purchasing user found for order', order._id);
+    return;
+  }
+  
+  console.log('Purchasing user:', purchasingUser.email, 'User ID:', purchasingUser._id);
+
+  // Initialize self commission tracking if not exists
+  if (!order.commissions) {
+    order.commissions = {};
+  }
+  if (!order.commissions.self) {
+    order.commissions.self = [];
+  }
+
+  let totalSelfCommissionDistributed = 0;
+
+  // For each product in the order
+  for (const item of order.items) {
+    // Get product details to check self-commission percentage
+    let product = null;
+    if (item.product) {
+      product = await Product.findById(item.product);
+    }
+
+    // Calculate self-commission based on product's selfCommission field
+    let selfCommissionPercentage = 0;
+    if (product && product.selfCommission) {
+      selfCommissionPercentage = product.selfCommission / 100; // Convert percentage to decimal
+    }
+
+    if (selfCommissionPercentage > 0) {
+      const selfCommission = item.productPrice * item.quantity * selfCommissionPercentage;
+      
+      console.log(`Self-commission for ${item.productName}: ${selfCommissionPercentage * 100}% = ₹${selfCommission}`);
+      
+      if (selfCommission > 0) {
+        try {
+          // Create earning record for the purchasing user
+          const earning = await Earning.create({
+            user: purchasingUser._id,
+            amount: selfCommission,
+            type: 'self_commission',
+            description: `Self-commission (${product.selfCommission}%) from order ${order._id} for product: ${item.productName}`,
+            status: 'pending',
+            orderId: order._id
+          });
+
+          // Update order self-commission tracking
+          order.commissions.self.push({
+            userId: purchasingUser._id,
+            productId: product._id,
+            productName: item.productName,
+            amount: selfCommission,
+            percentage: product.selfCommission,
+            status: 'pending',
+            earningId: earning._id
+          });
+
+          totalSelfCommissionDistributed += selfCommission;
+          console.log('Self-commission earning created for', purchasingUser.email, 'amount:', selfCommission);
+        } catch (err) {
+          console.log('Error creating self-commission earning for', purchasingUser.email, err);
+        }
+      }
+    } else {
+      console.log(`No self-commission for ${item.productName} (${selfCommissionPercentage * 100}%)`);
+    }
+  }
+
+  console.log(`Total self-commission distributed: ₹${totalSelfCommissionDistributed}`);
+  console.log('--- END SELF COMMISSION DEBUG ---');
+}
+
+/**
  * Calculate and distribute franchise commission
  * @param {Object} order - The order document
  */
@@ -229,12 +338,15 @@ async function distributeFranchiseCommission(order) {
 }
 
 /**
- * Calculate and distribute all commissions (MLM + Franchise)
+ * Calculate and distribute all commissions (Self + MLM + Franchise)
  * @param {Object} order - The order document
  */
 async function distributeAllCommissions(order) {
   try {
     console.log('Starting commission distribution for order:', order._id);
+    
+    // Distribute self-commission first (incentivize the buyer)
+    await distributeSelfCommission(order);
     
     // Distribute MLM commissions
     await distributeMLMCommission(order);
@@ -280,8 +392,9 @@ async function updateDownlineCount(uplineId) {
 
 module.exports = {
   distributeMLMCommission,
+  distributeSelfCommission,
   distributeFranchiseCommission,
   distributeAllCommissions,
   updateDownlineCount,
   MLM_COMMISSION_LEVELS
-}; 
+};

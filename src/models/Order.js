@@ -182,8 +182,40 @@ const orderSchema = new mongoose.Schema({
     type: String,
     required: false
   },
-  // MLM Commission tracking
+  // Commission tracking (Self + MLM + Franchise)
   commissions: {
+    self: [{
+      userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      },
+      productId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Product'
+      },
+      productName: {
+        type: String,
+        required: true
+      },
+      amount: {
+        type: Number,
+        required: true
+      },
+      percentage: {
+        type: Number,
+        required: true
+      },
+      status: {
+        type: String,
+        enum: ['pending', 'paid'],
+        default: 'pending'
+      },
+      paidAt: Date,
+      earningId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Earning'
+      }
+    }],
     mlm: [{
       userId: {
         type: mongoose.Schema.Types.ObjectId,

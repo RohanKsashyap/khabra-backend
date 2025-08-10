@@ -524,6 +524,12 @@ exports.getDashboardOverview = asyncHandler(async (req, res, next) => {
     }
   };
 
+  // Get recent earnings (last 10)
+  const recentEarnings = await Earning.find({ user: userId })
+    .sort({ createdAt: -1 })
+    .limit(10)
+    .lean();
+
   res.status(200).json({
     success: true,
     data: {
@@ -531,7 +537,8 @@ exports.getDashboardOverview = asyncHandler(async (req, res, next) => {
       orders: ordersData,
       team: teamData,
       personalPV: personalPVData,
-      rank: rankData
+      rank: rankData,
+      recentEarnings: recentEarnings
     }
   });
 });

@@ -1,13 +1,23 @@
+const mongoose = require('mongoose');
 const Product = require('../models/Product');
 const Stock = require('../models/Stock');
 const Franchise = require('../models/Franchise');
+const Category = require('../models/Category');
 const ErrorResponse = require('../utils/errorResponse');
 const asyncHandler = require('../middleware/asyncHandler');
 
 class ProductController {
   // Get all products
   getAllProducts = asyncHandler(async (req, res) => {
-    const products = await Product.find({});
+    const { category } = req.query;
+    let query = {};
+    
+    // Filter by category if provided
+    if (category) {
+      query.category = category;
+    }
+    
+    const products = await Product.find(query).populate('category', 'name displayName');
     res.status(200).json({
       success: true,
       data: products
@@ -16,7 +26,7 @@ class ProductController {
 
   // Get single product by ID
   getProductById = asyncHandler(async (req, res) => {
-    const product = await Product.findById(req.params.id);
+    const product = await Product.findById(req.params.id).populate('category', 'name displayName');
     
     if (!product) {
       return res.status(404).json({
@@ -120,19 +130,85 @@ class ProductController {
 
   // Create a new product
   createProduct = asyncHandler(async (req, res) => {
-    const product = await Product.create(req.body);
+    let { category, ...productData } = req.body;
+    
+    // Handle category conversion from name to ObjectId
+    if (category) {
+      let categoryDoc;
+      
+      // Check if it's already an ObjectId
+      if (mongoose.Types.ObjectId.isValid(category)) {
+        categoryDoc = await Category.findById(category);
+      } else {
+        // It's a string name, find by name
+        categoryDoc = await Category.findOne({ name: category });
+      }
+      
+      if (!categoryDoc) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid category'
+        });
+      }
+      
+      if (!categoryDoc.isActive) {
+        return res.status(400).json({
+          success: false,
+          error: 'Category is not active'
+        });
+      }
+      
+      // Use the ObjectId
+      productData.category = categoryDoc._id;
+    }
+    
+    const product = await Product.create(productData);
+    const populatedProduct = await Product.findById(product._id).populate('category', 'name displayName');
+    
     res.status(201).json({
       success: true,
-      data: product
+      data: populatedProduct
     });
   });
 
   // Update a product
   updateProduct = asyncHandler(async (req, res) => {
-    const product = await Product.findByIdAndUpdate(req.params.id, req.body, {
+    let { category, ...updateData } = req.body;
+    
+    // Handle category conversion from name to ObjectId
+    if (category) {
+      let categoryDoc;
+      
+      // Check if it's already an ObjectId
+      if (mongoose.Types.ObjectId.isValid(category)) {
+        categoryDoc = await Category.findById(category);
+      } else {
+        // It's a string name, find by name
+        categoryDoc = await Category.findOne({ name: category });
+      }
+      
+      if (!categoryDoc) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid category'
+        });
+      }
+      
+      if (!categoryDoc.isActive) {
+        return res.status(400).json({
+          success: false,
+          error: 'Category is not active'
+        });
+      }
+      
+      // Use the ObjectId
+      updateData.category = categoryDoc._id;
+    }
+    
+    const product = await Product.findByIdAndUpdate(req.params.id, updateData, {
       new: true,
       runValidators: true
-    });
+    }).populate('category', 'name displayName');
 
     if (!product) {
       return res.status(404).json({

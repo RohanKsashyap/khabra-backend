@@ -11,11 +11,16 @@ console.log('RAZORPAY_KEY_ID (from process.env):', process.env.RAZORPAY_KEY_ID);
 console.log('RAZORPAY_KEY_SECRET:', razorpayKeySecret ? 'LOADED' : 'MISSING');
 console.log('RAZORPAY_WEBHOOK_SECRET:', webhookSecret ? 'LOADED' : 'MISSING');
 
-// Initialize Razorpay instance
-const razorpay = new Razorpay({
-  key_id: razorpayKeyId,
-  key_secret: razorpayKeySecret
-});
+// Initialize Razorpay instance (only if keys are available)
+let razorpay = null;
+if (razorpayKeyId && razorpayKeySecret) {
+  razorpay = new Razorpay({
+    key_id: razorpayKeyId,
+    key_secret: razorpayKeySecret
+  });
+} else {
+  console.warn('Razorpay keys not configured. Payment functionality will be disabled.');
+}
 
 module.exports = {
   razorpay,

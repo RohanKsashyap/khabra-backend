@@ -21,9 +21,9 @@ const productSchema = new mongoose.Schema({
     required: [true, 'Please add an image URL'],
   },
   category: {
-    type: String,
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Category',
     required: [true, 'Please add a category'],
-    enum: ['health', 'beauty', 'wellness', 'other'],
   },
   stock: {
     type: Number,
@@ -31,11 +31,12 @@ const productSchema = new mongoose.Schema({
     min: [0, 'Stock cannot be negative'],
     default: 0,
   },
-  commission: {
+  selfCommission: {
     type: Number,
-    required: [true, 'Please add commission percentage'],
-    min: [0, 'Commission cannot be negative'],
-    max: [100, 'Commission cannot exceed 100%'],
+    required: [true, 'Please add self-commission percentage'],
+    min: [0, 'Self-commission cannot be negative'],
+    max: [100, 'Self-commission cannot exceed 100%'],
+    default: 3,
   },
   isActive: {
     type: Boolean,
@@ -63,6 +64,41 @@ const productSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  // SEO Fields
+  seoTitle: {
+    type: String,
+    trim: true,
+    maxlength: [60, 'SEO title cannot exceed 60 characters'],
+  },
+  metaDescription: {
+    type: String,
+    trim: true,
+    maxlength: [160, 'Meta description cannot exceed 160 characters'],
+  },
+  keywords: [{
+    type: String,
+    trim: true,
+    lowercase: true,
+  }],
+  slug: {
+    type: String,
+    trim: true,
+    lowercase: true,
+    index: true,
+  },
+  canonicalUrl: {
+    type: String,
+    trim: true,
+  },
+  featured: {
+    type: Boolean,
+    default: false,
+  },
+  tags: [{
+    type: String,
+    trim: true,
+    lowercase: true,
+  }],
 }, {
   timestamps: true,
   methods: {
@@ -128,6 +164,44 @@ const productSchema = new mongoose.Schema({
       }).populate('franchise', 'name');
     }
   }
+});
+
+// Auto-generate SEO fields before saving
+productSchema.pre('save', function(next) {
+  // Auto-generate slug if not provided
+  if (this.isModified('name') && (!this.slug || this.slug === '')) {
+    this.slug = this.name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '') // Remove special characters
+      .replace(/\s+/g, '-') // Replace spaces with hyphens
+      .replace(/-+/g, '-') // Replace multiple hyphens with single
+      .trim('-'); // Remove leading/trailing hyphens
+  }
+  
+  // Auto-generate SEO title if not provided
+  if (this.isModified('name') && (!this.seoTitle || this.seoTitle === '')) {
+    this.seoTitle = `${this.name} - Premium MLM Products | Khabra Generations Care`;
+    if (this.seoTitle.length > 60) {
+      this.seoTitle = `${this.name} | Khabra Generations Care`;
+    }
+  }
+  
+  // Auto-generate meta description if not provided
+  if ((this.isModified('name') || this.isModified('description')) && (!this.metaDescription || this.metaDescription === '')) {
+    const shortDesc = this.description ? this.description.substring(0, 100) : '';
+    this.metaDescription = `Buy ${this.name} - ${shortDesc}. Earn rewards with our trusted MLM business. Premium quality products with government approval.`;
+    if (this.metaDescription.length > 160) {
+      this.metaDescription = this.metaDescription.substring(0, 157) + '...';
+    }
+  }
+  
+  // Auto-generate keywords from name and category
+  if (this.isModified('name') && this.keywords.length === 0) {
+    const nameWords = this.name.toLowerCase().split(' ').filter(word => word.length > 2);
+    this.keywords = [...nameWords, 'mlm products', 'direct selling', 'network marketing', 'india'];
+  }
+  
+  next();
 });
 
 // Calculate average rating before saving
