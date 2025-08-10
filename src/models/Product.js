@@ -20,6 +20,10 @@ const productSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Please add an image URL'],
   },
+  imageFileId: {
+    type: String,
+    // Optional field to store ImageKit fileId for deletion
+  },
   category: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Category',

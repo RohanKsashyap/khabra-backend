@@ -831,3 +831,258 @@ const getUserSalesOverview = asyncHandler(async (req, res) => {
 
 // Export the getUserSalesOverview function
 exports.getUserSalesOverview = getUserSalesOverview;
+
+// @desc    Get detailed user self-commission and sales data (Admin only)
+// @route   GET /api/dashboard/admin/user-commission/:userId
+// @access  Private/Admin
+exports.getUserCommissionDetails = asyncHandler(async (req, res, next) => {
+  const userId = req.params.userId;
+  const { dateFrom, dateTo, status = 'all', page = 1, limit = 20 } = req.query;
+  
+  if (!userId) {
+    return res.status(400).json({
+      success: false,
+      message: 'User ID is required'
+    });
+  }
+
+  // Date filtering setup
+  let dateFilter = {};
+  if (dateFrom || dateTo) {
+    dateFilter.createdAt = {};
+    if (dateFrom) dateFilter.createdAt.$gte = new Date(dateFrom);
+    if (dateTo) dateFilter.createdAt.$lte = new Date(dateTo);
+  }
+
+  // Get the target user info
+  const targetUser = await User.findById(userId)
+    .select('name email phone role franchiseId networkLevel referralCode createdAt status')
+    .populate('franchiseId', 'name district')
+    .lean();
+    
+  if (!targetUser) {
+    return res.status(404).json({
+      success: false,
+      message: 'User not found'
+    });
+  }
+
+  // Build status filter for commissions
+  let commissionStatusFilter = {};
+  if (status !== 'all') {
+    commissionStatusFilter = { 'commissions.self.status': status };
+  }
+
+  // Get user's orders with detailed self-commission data
+  const ordersWithCommissions = await Order.find({
+    user: new mongoose.Types.ObjectId(userId),
+    ...dateFilter
+  })
+  .populate('items.product', 'name category')
+  .populate('franchise', 'name district')
+  .sort({ createdAt: -1 })
+  .lean();
+
+  // Calculate comprehensive self-commission summary
+  let totalSelfCommissions = 0;
+  let pendingSelfCommissions = 0;
+  let paidSelfCommissions = 0;
+  let totalOrders = ordersWithCommissions.length;
+  let totalSalesAmount = 0;
+  let selfCommissionsByProduct = {};
+  let monthlyCommissions = {};
+  let statusBreakdown = {
+    pending: { count: 0, amount: 0, commissions: 0 },
+    processing: { count: 0, amount: 0, commissions: 0 },
+    shipped: { count: 0, amount: 0, commissions: 0 },
+    delivered: { count: 0, amount: 0, commissions: 0 },
+    cancelled: { count: 0, amount: 0, commissions: 0 },
+    returned: { count: 0, amount: 0, commissions: 0 }
+  };
+
+  // Detailed commission records for pagination
+  let detailedCommissions = [];
+
+  ordersWithCommissions.forEach(order => {
+    totalSalesAmount += order.totalAmount;
+    
+    // Update status breakdown
+    if (statusBreakdown[order.status]) {
+      statusBreakdown[order.status].count += 1;
+      statusBreakdown[order.status].amount += order.totalAmount;
+    }
+
+    // Process self-commissions
+    if (order.commissions && order.commissions.self) {
+      order.commissions.self.forEach(comm => {
+        if (comm.userId && comm.userId.toString() === userId) {
+          totalSelfCommissions += comm.amount;
+          
+          // Update status breakdown commissions
+          if (statusBreakdown[order.status]) {
+            statusBreakdown[order.status].commissions += comm.amount;
+          }
+          
+          if (comm.status === 'pending') {
+            pendingSelfCommissions += comm.amount;
+          } else if (comm.status === 'paid') {
+            paidSelfCommissions += comm.amount;
+          }
+          
+          // Group by product
+          const productKey = comm.productName || 'Unknown Product';
+          if (!selfCommissionsByProduct[productKey]) {
+            selfCommissionsByProduct[productKey] = {
+              totalAmount: 0,
+              totalCommissions: 0,
+              averagePercentage: 0,
+              count: 0,
+              pending: 0,
+              paid: 0
+            };
+          }
+          
+          selfCommissionsByProduct[productKey].totalCommissions += comm.amount;
+          selfCommissionsByProduct[productKey].count += 1;
+          selfCommissionsByProduct[productKey].averagePercentage = 
+            ((selfCommissionsByProduct[productKey].averagePercentage * (selfCommissionsByProduct[productKey].count - 1)) + comm.percentage) / selfCommissionsByProduct[productKey].count;
+          
+          if (comm.status === 'pending') {
+            selfCommissionsByProduct[productKey].pending += comm.amount;
+          } else if (comm.status === 'paid') {
+            selfCommissionsByProduct[productKey].paid += comm.amount;
+          }
+          
+          // Group by month
+          const monthKey = new Date(order.createdAt).toISOString().slice(0, 7); // YYYY-MM
+          if (!monthlyCommissions[monthKey]) {
+            monthlyCommissions[monthKey] = {
+              totalCommissions: 0,
+              totalSales: 0,
+              orderCount: 0,
+              pending: 0,
+              paid: 0
+            };
+          }
+          
+          monthlyCommissions[monthKey].totalCommissions += comm.amount;
+          if (comm.status === 'pending') {
+            monthlyCommissions[monthKey].pending += comm.amount;
+          } else if (comm.status === 'paid') {
+            monthlyCommissions[monthKey].paid += comm.amount;
+          }
+          
+          // Add to detailed records
+          detailedCommissions.push({
+            orderId: order._id,
+            orderDate: order.createdAt,
+            orderStatus: order.status,
+            orderAmount: order.totalAmount,
+            productName: comm.productName,
+            productId: comm.productId,
+            commissionAmount: comm.amount,
+            commissionPercentage: comm.percentage,
+            commissionStatus: comm.status,
+            paidAt: comm.paidAt,
+            franchise: order.franchise ? {
+              name: order.franchise.name,
+              district: order.franchise.district
+            } : null
+          });
+        }
+      });
+    }
+    
+    // Update monthly sales data
+    const monthKey = new Date(order.createdAt).toISOString().slice(0, 7);
+    if (monthlyCommissions[monthKey]) {
+      monthlyCommissions[monthKey].totalSales += order.totalAmount;
+      monthlyCommissions[monthKey].orderCount += 1;
+    }
+  });
+
+  // Apply pagination to detailed commissions
+  const skip = (parseInt(page) - 1) * parseInt(limit);
+  const paginatedCommissions = detailedCommissions
+    .filter(comm => status === 'all' || comm.commissionStatus === status)
+    .slice(skip, skip + parseInt(limit));
+  
+  const totalCommissionRecords = detailedCommissions
+    .filter(comm => status === 'all' || comm.commissionStatus === status).length;
+
+  // Get user's earnings from Earning model for cross-reference
+  const userEarnings = await Earning.find({
+    user: userId,
+    type: 'self_commission',
+    ...(dateFrom || dateTo ? {
+      createdAt: {
+        ...(dateFrom && { $gte: new Date(dateFrom) }),
+        ...(dateTo && { $lte: new Date(dateTo) })
+      }
+    } : {})
+  })
+  .sort({ createdAt: -1 })
+  .limit(10)
+  .lean();
+
+  // Calculate commission rate
+  const avgCommissionRate = totalSalesAmount > 0 ? (totalSelfCommissions / totalSalesAmount) * 100 : 0;
+
+  // Format monthly data for charts
+  const monthlyData = Object.keys(monthlyCommissions)
+    .sort()
+    .map(month => ({
+      month,
+      ...monthlyCommissions[month],
+      commissionRate: monthlyCommissions[month].totalSales > 0 ? 
+        (monthlyCommissions[month].totalCommissions / monthlyCommissions[month].totalSales) * 100 : 0
+    }));
+
+  // Format product data
+  const productData = Object.keys(selfCommissionsByProduct)
+    .map(productName => ({
+      productName,
+      ...selfCommissionsByProduct[productName]
+    }))
+    .sort((a, b) => b.totalCommissions - a.totalCommissions);
+
+  res.status(200).json({
+    success: true,
+    data: {
+      user: {
+        ...targetUser,
+        joinedAt: targetUser.createdAt
+      },
+      summary: {
+        totalOrders,
+        totalSalesAmount,
+        totalSelfCommissions,
+        pendingSelfCommissions,
+        paidSelfCommissions,
+        avgCommissionRate: parseFloat(avgCommissionRate.toFixed(2)),
+        avgOrderValue: totalOrders > 0 ? totalSalesAmount / totalOrders : 0
+      },
+      statusBreakdown,
+      productBreakdown: productData,
+      monthlyBreakdown: monthlyData,
+      detailedCommissions: {
+        records: paginatedCommissions,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(totalCommissionRecords / parseInt(limit)),
+          totalRecords: totalCommissionRecords,
+          hasNext: skip + parseInt(limit) < totalCommissionRecords,
+          hasPrev: parseInt(page) > 1
+        }
+      },
+      recentEarnings: userEarnings,
+      filters: {
+        dateFrom: dateFrom || null,
+        dateTo: dateTo || null,
+        status,
+        page: parseInt(page),
+        limit: parseInt(limit)
+      }
+    }
+  });
+});

@@ -5,7 +5,8 @@ const {
   getAdminDashboardOverview,
   getRealTimeStats,
   getDashboardOverview,
-  getUserSalesOverview
+  getUserSalesOverview,
+  getUserCommissionDetails
 } = require('../controllers/dashboardController');
 
 // Get regular user dashboard overview
@@ -19,5 +20,8 @@ router.get('/admin/realtime', protect, authorize('admin'), getRealTimeStats);
 
 // Get detailed user sales overview with downline tracking (admin specific)
 router.get('/admin/user-sales/:userId', protect, authorize('admin'), getUserSalesOverview);
+
+// Get detailed user self-commission and sales data (admin specific)
+router.get('/admin/user-commission/:userId', protect, authorize('admin'), getUserCommissionDetails);
 
 module.exports = router;
