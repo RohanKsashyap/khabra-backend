@@ -146,16 +146,19 @@ class InventoryController {
       .skip(skip)
       .limit(limitNumber);
 
+    // Filter out any entries where populated product is missing (e.g., deleted product)
+    const validStocks = stocks.filter((s) => !!s.product);
+
     // Count total stocks
     const total = await Stock.countDocuments({ franchise: franchiseId });
 
     res.status(200).json({
       success: true,
-      count: stocks.length,
+      count: validStocks.length,
       total,
       page: pageNumber,
       pages: Math.ceil(total / limitNumber),
-      data: stocks
+      data: validStocks
     });
   });
 
